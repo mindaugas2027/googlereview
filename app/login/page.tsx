@@ -36,7 +36,7 @@ export default function LoginPage() {
       if (error) {
         setMessage({ text: error.message, type: 'error' })
       } else {
-        router.push('/')
+        router.push('/dashboard')
       }
     }
     setLoading(false)
