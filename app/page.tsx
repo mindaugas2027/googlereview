@@ -22,13 +22,13 @@ export default function App() {
   const [page, setPage] = useState<'landing' | 'overview' | 'feedback' | 'qr' | 'analytics' | 'locations' | 'settings' | 'billing' | 'public_review'>('landing');
   const [mobileMenu, setMobileMenu] = useState(false);
 
-  // Prisijungimo lango (Modal) būsenos
+  // Auth modal būsenos
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // Verslo profilis ir nustatymai
+  // Verslo profilis
   const [business, setBusiness] = useState<Business>({
     id: 'demo-id',
     name: 'Mano Verslas',
@@ -39,18 +39,33 @@ export default function App() {
     min_stars_for_google: 4,
   });
 
-  // Atsiliepimų duomenys
   const [feedbacks, setFeedbacks] = useState([
     { id: 1, name: 'Tomas A.', rating: 5, comment: 'Puikus aptarnavimas ir labai greitas darbas!', date: 'Prieš 2 val.', sentToGoogle: true },
     { id: 2, name: 'Rūta M.', rating: 4, comment: 'Viskas patiko, tik reikėjo šiek tiek palaukti.', date: 'Prieš 1 d.', sentToGoogle: true },
     { id: 3, name: 'Anonimas', rating: 2, comment: 'Ilgas laukimo laikas.', date: 'Prieš 3 d.', sentToGoogle: false }
   ]);
 
-  // QR Vertinimo puslapio būsenos
   const [userRating, setUserRating] = useState<number>(0);
   const [userComment, setUserComment] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Funkcijos mygtukų paspaudimui
+  const openLogin = () => {
+    setAuthMode('login');
+    setShowAuthModal(true);
+  };
+
+  const openSignUp = () => {
+    setAuthMode('register');
+    setShowAuthModal(true);
+  };
+
+  const handleAuthSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setShowAuthModal(false);
+    setPage('overview');
+  };
 
   const handleReviewSubmit = () => {
     if (userRating === 0) return;
@@ -72,12 +87,6 @@ export default function App() {
     setTimeout(() => setCopied(false), 3000);
   };
 
-  const handleAuthSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setShowAuthModal(false);
-    setPage('overview');
-  };
-
   // LANDING PUSLAPIS
   if (page === 'landing') {
     return (
@@ -88,14 +97,16 @@ export default function App() {
             <span className="text-lg font-bold">Review<span className="text-blue-500">Flow</span></span>
           </div>
           <div className="flex items-center gap-4">
+            {/* PRISIJUNGTI -> Nukreipia į LOGIN */}
             <button 
-              onClick={() => { setAuthMode('login'); setShowAuthModal(true); }} 
+              onClick={openLogin} 
               className="text-sm font-medium text-slate-300 hover:text-white transition"
             >
               Prisijungti
             </button>
+            {/* IŠBANDYTI NEMOKAMAI -> Nukreipia į SIGN UP */}
             <button 
-              onClick={() => { setAuthMode('register'); setShowAuthModal(true); }} 
+              onClick={openSignUp} 
               className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition"
             >
               Išbandyti nemokamai
@@ -115,8 +126,9 @@ export default function App() {
               Rinkite klientų atsiliepimus naudodami išmaniuosius QR kodus, gerinkite Google reitingus ir auginkite pardavimus.
             </p>
             <div className="flex justify-center">
+              {/* PRADĖTI NEMOKAMAI -> Nukreipia į SIGN UP */}
               <button 
-                onClick={() => { setAuthMode('register'); setShowAuthModal(true); }} 
+                onClick={openSignUp} 
                 className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 transition shadow-lg shadow-blue-500/20"
               >
                 Pradėti nemokamai <ArrowRight size={18} />
@@ -201,8 +213,9 @@ export default function App() {
                       ))}
                     </ul>
                   </div>
+                  {/* KAINODAROS PASIRINKIMAS -> Nukreipia į SIGN UP */}
                   <button 
-                    onClick={() => { setAuthMode('register'); setShowAuthModal(true); }} 
+                    onClick={openSignUp} 
                     className={`w-full py-3 rounded-xl font-semibold text-center transition ${plan.popular ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}`}
                   >
                     Pasirinkti
@@ -213,7 +226,7 @@ export default function App() {
           </section>
         </main>
 
-        {/* PRISIJUNGIMO / REGISTRACIJOS LANGAS (MODAL) */}
+        {/* DINAMINIS PRISIJUNGIMO / REGISTRACIJOS LANGAS */}
         {showAuthModal && (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-slate-900 border border-slate-800 w-full max-w-md p-6 rounded-2xl relative shadow-2xl">
@@ -229,10 +242,10 @@ export default function App() {
                   <Sparkles size={24} />
                 </div>
                 <h3 className="text-2xl font-bold text-white">
-                  {authMode === 'login' ? 'Prisijungti prie paskyros' : 'Sukurti paskyrą'}
+                  {authMode === 'login' ? 'Prisijungti prie paskyros' : 'Sukurti naują paskyrą'}
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  {authMode === 'login' ? 'Įveskite savo duomenis prisijungimui' : 'Pradėkite rinkti atsiliepimus jau šiandien'}
+                  {authMode === 'login' ? 'Įveskite savo duomenis prisijungimui' : 'Registruokitės ir pradėkite rinkti atsiliepimus'}
                 </p>
               </div>
 
@@ -271,10 +284,11 @@ export default function App() {
                   type="submit" 
                   className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition text-sm shadow-lg shadow-blue-600/20"
                 >
-                  {authMode === 'login' ? 'Prisijungti' : 'Registruotis'}
+                  {authMode === 'login' ? 'Prisijungti' : 'Sukurti paskyrą'}
                 </button>
               </form>
 
+              {/* PERJUNGINĖJIMAS TARP LOGIN IR SIGN UP */}
               <div className="mt-6 text-center text-xs text-slate-400">
                 {authMode === 'login' ? (
                   <p>
@@ -283,7 +297,7 @@ export default function App() {
                       onClick={() => setAuthMode('register')} 
                       className="text-blue-400 font-semibold hover:underline"
                     >
-                      Registruokitės
+                      Registruokitės čia
                     </button>
                   </p>
                 ) : (
@@ -293,7 +307,7 @@ export default function App() {
                       onClick={() => setAuthMode('login')} 
                       className="text-blue-400 font-semibold hover:underline"
                     >
-                      Prisijunkite
+                      Prisijunkite čia
                     </button>
                   </p>
                 )}
@@ -398,7 +412,7 @@ export default function App() {
     );
   }
 
-  // Valdymo panelė (SaaS App)
+  // VALDYMO PANELĖ (DASHBOARD)
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans">
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 border-r border-slate-800 p-6 flex flex-col justify-between transition-transform duration-300 md:translate-x-0 ${mobileMenu ? 'translate-x-0' : '-translate-x-full'}`}>
