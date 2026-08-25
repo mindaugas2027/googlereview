@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 
@@ -13,6 +13,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null)
   const router = useRouter()
+
+  useEffect(() => {
+    setIsSignUp(new URLSearchParams(window.location.search).get('mode') === 'signup')
+  }, [])
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()

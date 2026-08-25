@@ -22,7 +22,7 @@ export default function Home() {
             Prisijungti
           </Link>
           <Link
-            href="/login"
+            href="/login?mode=signup"
             className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition"
           >
             Išbandyti nemokamai
@@ -44,7 +44,7 @@ export default function Home() {
           </p>
           <div className="flex justify-center">
             <Link
-              href="/login"
+              href="/login?mode=signup"
               className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 transition shadow-lg shadow-blue-500/20"
             >
               Pradėti nemokamai <ArrowRight size={18} />
