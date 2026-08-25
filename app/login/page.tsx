@@ -38,12 +38,14 @@ export default function LoginPage() {
       )
 
       if (isSignUp) {
-        const { error } = await withTimeout(supabase.auth.signUp({ email, password }))
+        const { data, error } = await withTimeout(supabase.auth.signUp({ email, password }))
         if (error) {
           setMessage({ text: error.message, type: 'error' })
-        } else {
-          window.location.assign('/login')
+        } else if (data.session) {
+          window.location.assign('/dashboard')
           return
+        } else {
+          setMessage({ text: 'Paskyra sukurta. Patikrinkite el. paštą ir patvirtinkite paskyrą, kad galėtumėte patekti į valdymo panelę.', type: 'success' })
         }
       } else {
         const { error } = await withTimeout(supabase.auth.signInWithPassword({ email, password }))
