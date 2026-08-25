@@ -8,28 +8,31 @@ import {
   Menu, MessageSquare, Plus, QrCode, ScanLine, Settings, Sparkles, Star, X, Zap, Loader2 
 } from 'lucide-react';
 
+type Feedback = {
+  id: number;
+  name: string;
+  rating: number;
+  comment: string;
+  date: string;
+  sentToGoogle: boolean;
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [password, setPassword] = useState('');
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [page, setPage] = useState<'overview' | 'feedback' | 'qr' | 'analytics' | 'locations' | 'settings' | 'billing'>('overview');
   const [mobileMenu, setMobileMenu] = useState(false);
 
   const [business, setBusiness] = useState({
-    id: 'demo-id',
-    name: 'Mano Verslas',
-    category: 'Grožio paslaugos',
-    address: 'Gedimino pr. 1, Vilnius',
+    name: '',
     brand_color: '#2563eb',
-    google_review_url: 'https://g.page/r/example/review',
-    min_stars_for_google: 4,
+    google_review_url: '',
   });
 
-  const [feedbacks, setFeedbacks] = useState([
-    { id: 1, name: 'Tomas A.', rating: 5, comment: 'Puikus aptarnavimas ir labai greitas darbas!', date: 'Prieš 2 val.', sentToGoogle: true },
-    { id: 2, name: 'Rūta M.', rating: 4, comment: 'Viskas patiko, tik reikėjo šiek tiek palaukti.', date: 'Prieš 1 d.', sentToGoogle: true },
-    { id: 3, name: 'Anonimas', rating: 2, comment: 'Ilgas laukimo laikas.', date: 'Prieš 3 d.', sentToGoogle: false }
-  ]);
+  const [feedbacks] = useState<Feedback[]>([]);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -39,6 +42,10 @@ export default function DashboardPage() {
         router.push('/login');
       } else {
         setUser(session.user);
+        const savedBusinessName = session.user.user_metadata?.company_name;
+        if (savedBusinessName) {
+          setBusiness((currentBusiness) => ({ ...currentBusiness, name: savedBusinessName }));
+        }
         setLoading(false);
       }
     };
@@ -49,6 +56,29 @@ export default function DashboardPage() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
+  };
+
+  const saveBusinessName = async () => {
+    if (!user || !business.name.trim()) {
+      setProfileMessage('Įrašykite įmonės pavadinimą.');
+      return;
+    }
+
+    const companyName = business.name.trim();
+    const { error } = await supabase.auth.updateUser({ data: { company_name: companyName } });
+    setProfileMessage(error ? error.message : 'Įmonės pavadinimas išsaugotas.');
+    if (!error) setBusiness({ ...business, name: companyName });
+  };
+
+  const changePassword = async () => {
+    if (password.length < 6) {
+      setProfileMessage('Naujas slaptažodis turi būti bent 6 simbolių.');
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({ password });
+    setProfileMessage(error ? error.message : 'Slaptažodis pakeistas.');
+    if (!error) setPassword('');
   };
 
   if (loading) {
@@ -77,7 +107,7 @@ export default function DashboardPage() {
             </span>
             <div className="overflow-hidden">
               <div className="font-semibold text-sm truncate">{user?.email || business.name}</div>
-              <div className="text-xs text-slate-400 truncate">{business.category}</div>
+              <div className="text-xs text-slate-400 truncate">{business.name || 'Nustatykite įmonės pavadinimą'}</div>
             </div>
           </div>
 
@@ -121,13 +151,21 @@ export default function DashboardPage() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
                   <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">APŽVALGA</span>
-                  <h1 className="text-3xl font-extrabold text-white mt-1">Sveiki grįžę!</h1>
+                  <h1 className="text-3xl font-extrabold text-white mt-1">{business.name || 'Sveiki grįžę!'}</h1>
                   <p className="text-sm text-slate-400 mt-1">Prijungta paskyra: {user?.email}</p>
                 </div>
                 <button onClick={() => setPage('qr')} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 self-start md:self-auto">
                   <Plus size={16} /> Naujas QR kodas
                 </button>
               </div>
+
+              {!business.name && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl p-5 mb-8">
+                  <h2 className="font-bold text-white mb-1">Pradėkite nuo įmonės profilio</h2>
+                  <p className="text-sm text-slate-400 mb-4">Įrašykite įmonės pavadinimą, kad galėtumėte pradėti rinkti atsiliepimus.</p>
+                  <button onClick={() => setPage('settings')} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold">Nustatyti įmonės pavadinimą</button>
+                </div>
+              )}
 
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 {[
@@ -172,15 +210,40 @@ export default function DashboardPage() {
 
           {page === 'settings' && (
             <div>
-              <h1 className="text-3xl font-extrabold text-white mb-2">Nustatymai</h1>
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-xl">
-                <label className="block text-xs font-semibold text-slate-400 mb-2">Google Review URL</label>
-                <input
-                  type="text"
-                  value={business.google_review_url}
-                  onChange={(e) => setBusiness({ ...business, google_review_url: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <h1 className="text-3xl font-extrabold text-white mb-2">Profilis ir nustatymai</h1>
+              <p className="text-sm text-slate-400 mb-6">Tvarkykite paskyros ir įmonės informaciją.</p>
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-xl space-y-6">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-2">El. paštas</label>
+                  <input type="email" value={user?.email || ''} readOnly className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-2">Įmonės pavadinimas</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Įrašykite įmonės pavadinimą"
+                      value={business.name}
+                      onChange={(e) => setBusiness({ ...business, name: e.target.value })}
+                      className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button onClick={saveBusinessName} className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-xl text-sm font-semibold">Išsaugoti</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-2">Naujas slaptažodis</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="Mažiausiai 6 simboliai"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button onClick={changePassword} className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 rounded-xl text-sm font-semibold">Pakeisti</button>
+                  </div>
+                </div>
+                {profileMessage && <p className="text-sm text-blue-300">{profileMessage}</p>}
               </div>
             </div>
           )}
