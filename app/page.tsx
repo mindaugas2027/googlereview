@@ -1,10 +1,10 @@
 import Link from 'next/link';
-import { Sparkles, ArrowRight, Check } from 'lucide-react';
+import { Sparkles, ArrowRight } from 'lucide-react';
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
-      {/* NAVIGACIJOS JUOSTA */}
+      {/* NAVIGACIJOS JUOSTA - ČIA SVRBIAUSIA DALIS */}
       <header className="flex justify-between items-center p-6 border-b border-slate-800 max-w-7xl mx-auto">
         <div className="flex items-center gap-2.5">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white">
