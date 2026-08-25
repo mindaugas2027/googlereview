@@ -1,4 +1,5 @@
 import { Sparkles, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 
 export default function Home() {
   return (
@@ -14,18 +15,18 @@ export default function Home() {
           </span>
         </div>
         <div className="flex items-center gap-4">
-          <a 
-            href="/login" 
+          <Link 
+            href="/login"
             className="text-sm font-medium text-slate-300 hover:text-white transition"
           >
             Prisijungti
-          </a>
-          <a 
-            href="/login" 
+          </Link>
+          <Link
+            href="/login"
             className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition"
           >
             Išbandyti nemokamai
-          </a>
+          </Link>
         </div>
       </header>
 
@@ -42,12 +43,12 @@ export default function Home() {
             Rinkite klientų atsiliepimus naudodami išmaniuosius QR kodus, gerinkite Google reitingus ir auginkite pardavimus.
           </p>
           <div className="flex justify-center">
-            <a 
-              href="/login" 
+            <Link
+              href="/login"
               className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 transition shadow-lg shadow-blue-500/20"
             >
               Pradėti nemokamai <ArrowRight size={18} />
-            </a>
+            </Link>
           </div>
         </section>
       </main>
