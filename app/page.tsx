@@ -2,7 +2,11 @@
 
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Activity, ArrowRight, BarChart3, Check, Copy, ExternalLink, Eye, Globe2, LayoutDashboard, LogOut, MapPin, Menu, MessageSquare, Plus, QrCode, ScanLine, Settings, Sparkles, Star, Store, ThumbsUp, X, Zap } from 'lucide-react';
+import { 
+  ArrowRight, BarChart3, Check, Copy, ExternalLink, Eye, 
+  Globe2, LayoutDashboard, LogOut, MapPin, Menu, MessageSquare, 
+  Plus, QrCode, ScanLine, Settings, Sparkles, Star, ThumbsUp, X, Zap, Lock, Mail
+} from 'lucide-react';
 
 type Business = {
   id: string;
@@ -18,6 +22,12 @@ export default function App() {
   const [page, setPage] = useState<'landing' | 'overview' | 'feedback' | 'qr' | 'analytics' | 'locations' | 'settings' | 'billing' | 'public_review'>('landing');
   const [mobileMenu, setMobileMenu] = useState(false);
 
+  // Prisijungimo lango (Modal) būsenos
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
   // Verslo profilis ir nustatymai
   const [business, setBusiness] = useState<Business>({
     id: 'demo-id',
@@ -29,7 +39,7 @@ export default function App() {
     min_stars_for_google: 4,
   });
 
-  // Atsiliepimų duomenys (privatūs ir vieši)
+  // Atsiliepimų duomenys
   const [feedbacks, setFeedbacks] = useState([
     { id: 1, name: 'Tomas A.', rating: 5, comment: 'Puikus aptarnavimas ir labai greitas darbas!', date: 'Prieš 2 val.', sentToGoogle: true },
     { id: 2, name: 'Rūta M.', rating: 4, comment: 'Viskas patiko, tik reikėjo šiek tiek palaukti.', date: 'Prieš 1 d.', sentToGoogle: true },
@@ -62,18 +72,34 @@ export default function App() {
     setTimeout(() => setCopied(false), 3000);
   };
 
+  const handleAuthSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setShowAuthModal(false);
+    setPage('overview');
+  };
+
   // LANDING PUSLAPIS
   if (page === 'landing') {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
+      <div className="min-h-screen bg-slate-950 text-slate-100 font-sans relative">
         <header className="flex justify-between items-center p-6 border-b border-slate-800 max-w-7xl mx-auto">
           <div className="flex items-center gap-2.5">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white"><Sparkles size={18} /></span>
             <span className="text-lg font-bold">Review<span className="text-blue-500">Flow</span></span>
           </div>
           <div className="flex items-center gap-4">
-            <button onClick={() => setPage('overview')} className="text-sm font-medium text-slate-300 hover:text-white">Prisijungti</button>
-            <button onClick={() => setPage('overview')} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition">Išbandyti nemokamai</button>
+            <button 
+              onClick={() => { setAuthMode('login'); setShowAuthModal(true); }} 
+              className="text-sm font-medium text-slate-300 hover:text-white transition"
+            >
+              Prisijungti
+            </button>
+            <button 
+              onClick={() => { setAuthMode('register'); setShowAuthModal(true); }} 
+              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition"
+            >
+              Išbandyti nemokamai
+            </button>
           </div>
         </header>
 
@@ -85,9 +111,14 @@ export default function App() {
             <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight mb-6">
               Paverskite atsiliepimus <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">savo verslo varikliu</span>
             </h1>
-            <p className="text-slate-400 text-lg mb-8 max-w-2xl mx-auto">Rinkite klientų atsiliepimus naudodami išmaniuosius QR kodus, gerinkite Google reitingus ir auginkite pardavimus.</p>
+            <p className="text-slate-400 text-lg mb-8 max-w-2xl mx-auto">
+              Rinkite klientų atsiliepimus naudodami išmaniuosius QR kodus, gerinkite Google reitingus ir auginkite pardavimus.
+            </p>
             <div className="flex justify-center">
-              <button onClick={() => setPage('overview')} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 transition shadow-lg shadow-blue-500/20">
+              <button 
+                onClick={() => { setAuthMode('register'); setShowAuthModal(true); }} 
+                className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 transition shadow-lg shadow-blue-500/20"
+              >
                 Pradėti nemokamai <ArrowRight size={18} />
               </button>
             </div>
@@ -170,7 +201,10 @@ export default function App() {
                       ))}
                     </ul>
                   </div>
-                  <button onClick={() => setPage('overview')} className={`w-full py-3 rounded-xl font-semibold text-center transition ${plan.popular ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}`}>
+                  <button 
+                    onClick={() => { setAuthMode('register'); setShowAuthModal(true); }} 
+                    className={`w-full py-3 rounded-xl font-semibold text-center transition ${plan.popular ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}`}
+                  >
                     Pasirinkti
                   </button>
                 </div>
@@ -178,6 +212,95 @@ export default function App() {
             </div>
           </section>
         </main>
+
+        {/* PRISIJUNGIMO / REGISTRACIJOS LANGAS (MODAL) */}
+        {showAuthModal && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-md p-6 rounded-2xl relative shadow-2xl">
+              <button 
+                onClick={() => setShowAuthModal(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="text-center mb-6">
+                <div className="w-12 h-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-3">
+                  <Sparkles size={24} />
+                </div>
+                <h3 className="text-2xl font-bold text-white">
+                  {authMode === 'login' ? 'Prisijungti prie paskyros' : 'Sukurti paskyrą'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  {authMode === 'login' ? 'Įveskite savo duomenis prisijungimui' : 'Pradėkite rinkti atsiliepimus jau šiandien'}
+                </p>
+              </div>
+
+              <form onSubmit={handleAuthSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">El. paštas</label>
+                  <div className="relative">
+                    <Mail size={18} className="absolute left-3 top-3 text-slate-500" />
+                    <input 
+                      type="email" 
+                      required
+                      placeholder="vardas@imone.lt" 
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Slaptažodis</label>
+                  <div className="relative">
+                    <Lock size={18} className="absolute left-3 top-3 text-slate-500" />
+                    <input 
+                      type="password" 
+                      required
+                      placeholder="••••••••" 
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <button 
+                  type="submit" 
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition text-sm shadow-lg shadow-blue-600/20"
+                >
+                  {authMode === 'login' ? 'Prisijungti' : 'Registruotis'}
+                </button>
+              </form>
+
+              <div className="mt-6 text-center text-xs text-slate-400">
+                {authMode === 'login' ? (
+                  <p>
+                    Neturite paskyros?{' '}
+                    <button 
+                      onClick={() => setAuthMode('register')} 
+                      className="text-blue-400 font-semibold hover:underline"
+                    >
+                      Registruokitės
+                    </button>
+                  </p>
+                ) : (
+                  <p>
+                    Jau turite paskyrą?{' '}
+                    <button 
+                      onClick={() => setAuthMode('login')} 
+                      className="text-blue-400 font-semibold hover:underline"
+                    >
+                      Prisijunkite
+                    </button>
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
