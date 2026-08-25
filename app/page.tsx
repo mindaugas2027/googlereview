@@ -3,7 +3,6 @@ import { Sparkles, ArrowRight } from 'lucide-react';
 export default function Home() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
-      {/* NAVIGACIJOS JUOSTA */}
       <header className="flex justify-between items-center p-6 border-b border-slate-800 max-w-7xl mx-auto">
         <div className="flex items-center gap-2.5">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white">
@@ -29,7 +28,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* LANDING PAGE TURINYS */}
       <main className="max-w-7xl mx-auto px-6 py-16">
         <section className="text-center py-12 max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs px-3 py-1 rounded-full mb-6 font-semibold">
