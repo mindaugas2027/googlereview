@@ -42,7 +42,7 @@ export default function LoginPage() {
         if (error) {
           setMessage({ text: error.message, type: 'error' })
         } else {
-          router.replace('/login')
+          window.location.assign('/login')
           return
         }
       } else {
