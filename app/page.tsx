@@ -102,7 +102,7 @@ export default function Home() {
                 <ul className="space-y-3 text-sm text-slate-300 mb-7">
                   {plan.features.map((feature) => <li key={feature} className="flex items-center gap-2"><Check size={16} className="text-emerald-400" />{feature}</li>)}
                 </ul>
-                <Link href="/login" className={`w-full py-3 rounded-xl font-semibold text-center block transition ${plan.popular ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}`}>
+                <Link href="/login?mode=signup" className={`w-full py-3 rounded-xl font-semibold text-center block transition ${plan.popular ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}`}>
                   Išbandyti nemokamai
                 </Link>
               </div>
