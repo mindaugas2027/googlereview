@@ -71,19 +71,19 @@ export default function LoginPage() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: '#0f172a',
-      color: '#f8fafc',
+      backgroundColor: '#f8fafd',
+      color: '#202124',
       fontFamily: 'system-ui, -apple-system, sans-serif',
       padding: '20px'
     }}>
       <div style={{
         width: '100%',
         maxWidth: '420px',
-        backgroundColor: '#1e293b',
+        backgroundColor: '#ffffff',
         borderRadius: '16px',
         padding: '40px',
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
-        border: '1px solid #334155'
+        boxShadow: '0 8px 24px rgba(60, 64, 67, 0.12)',
+        border: '1px solid #dadce0'
       }}>
         {/* Antraštė */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
@@ -94,7 +94,7 @@ export default function LoginPage() {
             width: '48px',
             height: '48px',
             borderRadius: '12px',
-            background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
+            background: '#1a73e8',
             color: 'white',
             fontWeight: 'bold',
             fontSize: '20px',
@@ -102,10 +102,10 @@ export default function LoginPage() {
           }}>
             RF
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: '700', margin: '0 0 8px 0', color: '#ffffff' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: '700', margin: '0 0 8px 0', color: '#202124' }}>
             {isSignUp ? 'Sukurti paskyrą' : 'Sveiki sugrįžę'}
           </h1>
-          <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0 }}>
+          <p style={{ fontSize: '14px', color: '#5f6368', margin: 0 }}>
             {isSignUp ? 'Įveskite duomenis naujai paskyrai' : 'Prisijunkite prie savo valdymo panelės'}
           </p>
         </div>
@@ -118,8 +118,8 @@ export default function LoginPage() {
             marginBottom: '20px',
             fontSize: '14px',
             backgroundColor: message.type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
-            border: `1px solid ${message.type === 'error' ? '#ef4444' : '#22c55e'}`,
-            color: message.type === 'error' ? '#fca5a5' : '#86efac'
+            border: `1px solid ${message.type === 'error' ? '#ea4335' : '#34a853'}`,
+            color: message.type === 'error' ? '#c5221f' : '#137333'
           }}>
             {message.text}
           </div>
@@ -128,7 +128,7 @@ export default function LoginPage() {
         {/* Forma */}
         <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#cbd5e1', marginBottom: '6px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#3c4043', marginBottom: '6px' }}>
               El. paštas
             </label>
             <input
@@ -141,9 +141,9 @@ export default function LoginPage() {
                 width: '100%',
                 padding: '12px 16px',
                 borderRadius: '8px',
-                backgroundColor: '#0f172a',
-                border: '1px solid #334155',
-                color: '#ffffff',
+                backgroundColor: '#ffffff',
+                border: '1px solid #dadce0',
+                color: '#202124',
                 fontSize: '15px',
                 outline: 'none',
                 boxSizing: 'border-box'
@@ -152,7 +152,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#cbd5e1', marginBottom: '6px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#3c4043', marginBottom: '6px' }}>
               Slaptažodis
             </label>
             <input
@@ -165,9 +165,9 @@ export default function LoginPage() {
                 width: '100%',
                 padding: '12px 16px',
                 borderRadius: '8px',
-                backgroundColor: '#0f172a',
-                border: '1px solid #334155',
-                color: '#ffffff',
+                backgroundColor: '#ffffff',
+                border: '1px solid #dadce0',
+                color: '#202124',
                 fontSize: '15px',
                 outline: 'none',
                 boxSizing: 'border-box'
@@ -182,7 +182,7 @@ export default function LoginPage() {
               width: '100%',
               padding: '12px',
               borderRadius: '8px',
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+              background: '#1a73e8',
               color: '#ffffff',
               border: 'none',
               fontSize: '16px',
@@ -198,7 +198,7 @@ export default function LoginPage() {
         </form>
 
         {/* Perjungimas tarp Prisijungti / Registruotis */}
-        <div style={{ textAlign: 'center', marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #334155' }}>
+        <div style={{ textAlign: 'center', marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #dadce0' }}>
           <button
             type="button"
             onClick={() => {
@@ -208,7 +208,7 @@ export default function LoginPage() {
             style={{
               background: 'none',
               border: 'none',
-              color: '#3b82f6',
+              color: '#1a73e8',
               fontSize: '14px',
               fontWeight: '500',
               cursor: 'pointer'
