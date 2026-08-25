@@ -6,6 +6,14 @@ import { useRouter } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
+const withTimeout = <T,>(promise: PromiseLike<T>, milliseconds = 10000) =>
+  Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error('Užklausa užtruko per ilgai. Patikrinkite interneto ryšį ir bandykite dar kartą.')), milliseconds)
+    })
+  ])
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -30,7 +38,7 @@ export default function LoginPage() {
       )
 
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password })
+        const { error } = await withTimeout(supabase.auth.signUp({ email, password }))
         if (error) {
           setMessage({ text: error.message, type: 'error' })
         } else {
@@ -38,7 +46,7 @@ export default function LoginPage() {
           return
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        const { error } = await withTimeout(supabase.auth.signInWithPassword({ email, password }))
         if (error) {
           setMessage({ text: error.message, type: 'error' })
         } else {
