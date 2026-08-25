@@ -33,7 +33,8 @@ export default function LoginPage() {
       if (error) {
         setMessage({ text: error.message, type: 'error' })
       } else {
-        setMessage({ text: 'Registracija sėkminga! Galite prisijungti.', type: 'success' })
+        router.replace('/login')
+        return
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
