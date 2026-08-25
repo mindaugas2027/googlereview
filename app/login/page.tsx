@@ -23,28 +23,36 @@ export default function LoginPage() {
     setLoading(true)
     setMessage(null)
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-    )
+    try {
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+      )
 
-    if (isSignUp) {
-      const { error } = await supabase.auth.signUp({ email, password })
-      if (error) {
-        setMessage({ text: error.message, type: 'error' })
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({ email, password })
+        if (error) {
+          setMessage({ text: error.message, type: 'error' })
+        } else {
+          router.replace('/login')
+          return
+        }
       } else {
-        router.replace('/login')
-        return
+        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) {
+          setMessage({ text: error.message, type: 'error' })
+        } else {
+          router.push('/dashboard')
+        }
       }
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) {
-        setMessage({ text: error.message, type: 'error' })
-      } else {
-        router.push('/dashboard')
-      }
+    } catch (error) {
+      setMessage({
+        text: error instanceof Error ? error.message : 'Įvyko netikėta klaida. Bandykite dar kartą.',
+        type: 'error'
+      })
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
