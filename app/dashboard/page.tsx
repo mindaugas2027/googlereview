@@ -127,6 +127,13 @@ export default function DashboardPage() {
     }
 
     const googleReviewUrl = business.google_review_url.trim();
+    try {
+      const parsedUrl = new URL(googleReviewUrl);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error();
+    } catch {
+      setProfileMessage('Įrašykite galiojančią Google Review nuorodą.');
+      return;
+    }
     const { error } = await supabase.auth.updateUser({ data: { google_review_url: googleReviewUrl } });
     setProfileMessage(error ? error.message : 'Google atsiliepimų nuoroda išsaugota.');
     if (!error) setBusiness({ ...business, google_review_url: googleReviewUrl });

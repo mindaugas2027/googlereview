@@ -19,9 +19,10 @@ export default function ReviewPage() {
   const googleThreshold = Math.min(5, Math.max(1, Number(params?.get('threshold')) || 4))
   const isPositive = rating >= googleThreshold
 
-  const recordGoogleClick = async () => {
-    if (!businessId) return
-    await supabase.from('feedbacks').insert({
+  const recordGoogleClick = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault()
+    if (!businessId || !googleUrl) return
+    const { error: insertError } = await supabase.from('feedbacks').insert({
       user_id: businessId,
       name: name.trim() || 'Anoniminis klientas',
       rating,
@@ -29,6 +30,11 @@ export default function ReviewPage() {
       sent_to_google: true,
       created_at: new Date().toISOString(),
     })
+    if (insertError) {
+      setError(`Google nukreipimo nepavyko užregistruoti: ${insertError.message}`)
+      return
+    }
+    window.location.assign(googleUrl)
   }
 
   const submitPrivateFeedback = async () => {
@@ -48,7 +54,7 @@ export default function ReviewPage() {
     })
     setSending(false)
     if (insertError) {
-      setError('Žinutės išsiųsti nepavyko. Pabandykite dar kartą.')
+      setError(`Žinutės išsiųsti nepavyko: ${insertError.message}`)
       return
     }
     setSubmitted(true)
