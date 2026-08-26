@@ -41,6 +41,12 @@ on public.feedbacks for select
 to authenticated
 using (auth.uid() = user_id);
 
+drop policy if exists "Users can delete their own feedback" on public.feedbacks;
+create policy "Users can delete their own feedback"
+on public.feedbacks for delete
+to authenticated
+using (auth.uid() = user_id);
+
 insert into storage.buckets (id, name, public)
 values ('logos', 'logos', true)
 on conflict (id) do update set public = true;
@@ -63,5 +69,25 @@ on storage.objects for update
 to authenticated
 using (bucket_id = 'logos' and (storage.foldername(name))[1] = auth.uid()::text)
 with check (bucket_id = 'logos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+create table if not exists public.qr_scans (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+alter table public.qr_scans enable row level security;
+
+drop policy if exists "Anyone can record QR scans" on public.qr_scans;
+create policy "Anyone can record QR scans"
+on public.qr_scans for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "Users can view their own QR scans" on public.qr_scans;
+create policy "Users can view their own QR scans"
+on public.qr_scans for select
+to authenticated
+using (auth.uid() = user_id);
 
 notify pgrst, 'reload schema';

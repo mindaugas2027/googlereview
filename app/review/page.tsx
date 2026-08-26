@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Send, Sparkles, Star } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
@@ -19,6 +19,15 @@ export default function ReviewPage() {
   const logoUrl = params?.get('logo') || ''
   const threshold = Math.min(5, Math.max(1, Number(params?.get('threshold')) || 4))
   const isPositive = rating >= threshold
+  const scanRecorded = useRef(false)
+
+  useEffect(() => {
+    if (!businessId || scanRecorded.current) return
+    scanRecorded.current = true
+    supabase.from('qr_scans').insert({ user_id: businessId }).then(({ error }) => {
+      if (error) console.error('QR scan could not be recorded', error)
+    })
+  }, [businessId])
 
   const getDestinationHostname = () => {
     try {

@@ -1,11 +1,10 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { 
+import {
   BarChart3, Globe2, LayoutDashboard, LogOut, MapPin,
-  Menu, MessageSquare, Plus, QrCode, ScanLine, Settings, Sparkles, Star, X, Zap, Loader2, ArrowUpRight
+  Menu, MessageSquare, Plus, QrCode, ScanLine, Send, Settings, Sparkles, Star, X, Zap, Loader2, ArrowUpRight
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -38,7 +37,8 @@ export default function DashboardPage() {
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [page, setPage] = useState<'overview' | 'feedback' | 'qr' | 'analytics' | 'locations' | 'settings' | 'billing'>('overview');
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [feedbackSort, setFeedbackSort] = useState<'newest' | 'oldest'>('newest');
+  const [feedbackSort, setFeedbackSort] = useState<'newest' | 'oldest' | 'rating-high' | 'rating-low'>('newest');
+  const [monthlyGoal, setMonthlyGoal] = useState(60);
 
   const [business, setBusiness] = useState({
     name: '',
@@ -46,9 +46,39 @@ export default function DashboardPage() {
     google_review_url: '',
     google_min_rating: 4,
     logo_url: '',
+    facebook_url: '',
+    instagram_url: '',
+    linkedin_url: '',
   });
 
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [qrScans, setQrScans] = useState<string[]>([]);
+
+  const averageRating = feedbacks.length
+    ? (feedbacks.reduce((total, feedback) => total + feedback.rating, 0) / feedbacks.length).toFixed(1)
+    : '—';
+  const googleRedirects = feedbacks.filter((feedback) => feedback.sentToGoogle).length;
+  const reviewConversion = qrScans.length ? Math.round((feedbacks.length / qrScans.length) * 100) : 0;
+  const positiveFeedbacks = feedbacks.filter((feedback) => feedback.rating >= business.google_min_rating).length;
+  const positiveRate = feedbacks.length ? Math.round((positiveFeedbacks / feedbacks.length) * 100) : 0;
+  const currentMonth = new Date();
+  const monthlyFeedbacks = feedbacks.filter((feedback) => {
+    const createdAt = new Date(feedback.createdAt || feedback.date);
+    return createdAt.getMonth() === currentMonth.getMonth() && createdAt.getFullYear() === currentMonth.getFullYear();
+  }).length;
+  const monthlyGoalProgress = Math.min(Math.round((monthlyFeedbacks / monthlyGoal) * 100), 100);
+  const ratingDistribution = [5, 4, 3, 2, 1].map((rating) => ({
+    rating,
+    count: feedbacks.filter((feedback) => feedback.rating === rating).length,
+  }));
+  const maxRatingCount = Math.max(...ratingDistribution.map((item) => item.count), 1);
+  const feedbacksByWeek = Array.from({ length: 7 }, (_, index) => {
+    const weekStart = Date.now() - (6 - index) * 7 * 24 * 60 * 60 * 1000;
+    return feedbacks.filter((feedback) => {
+      const createdAt = new Date(feedback.createdAt || feedback.date).getTime();
+      return createdAt >= weekStart - 7 * 24 * 60 * 60 * 1000 && createdAt < weekStart;
+    }).length;
+  });
 
   const trialDaysLeft = getTrialDaysLeft(user?.user_metadata?.trial_started_at);
   const subscriptionExpired = trialDaysLeft === 0;
@@ -70,13 +100,21 @@ export default function DashboardPage() {
         const savedGoogleReviewUrl = session.user.user_metadata?.google_review_url;
         const savedGoogleMinRating = Number(session.user.user_metadata?.google_min_rating) || 4;
         const savedLogoUrl = session.user.user_metadata?.logo_url || '';
+        const savedMonthlyGoal = Number(session.user.user_metadata?.monthly_goal) || 60;
+        const savedFacebookUrl = session.user.user_metadata?.facebook_url || '';
+        const savedInstagramUrl = session.user.user_metadata?.instagram_url || '';
+        const savedLinkedinUrl = session.user.user_metadata?.linkedin_url || '';
         setBusiness((currentBusiness) => ({
           ...currentBusiness,
           name: savedBusinessName || currentBusiness.name,
           google_review_url: savedGoogleReviewUrl ? normalizeGoogleReviewUrl(savedGoogleReviewUrl) : currentBusiness.google_review_url,
           google_min_rating: savedGoogleMinRating,
           logo_url: savedLogoUrl,
+          facebook_url: savedFacebookUrl,
+          instagram_url: savedInstagramUrl,
+          linkedin_url: savedLinkedinUrl,
         }));
+        setMonthlyGoal(Math.max(1, savedMonthlyGoal));
         const { data: savedFeedbacks } = await supabase
           .from('feedbacks')
           .select('id, name, rating, comment, created_at, sent_to_google')
@@ -90,6 +128,12 @@ export default function DashboardPage() {
             sentToGoogle: feedback.sent_to_google,
           })));
         }
+        const { data: savedScans } = await supabase
+          .from('qr_scans')
+          .select('created_at')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
+        if (savedScans) setQrScans(savedScans.map((scan) => scan.created_at));
         setLoading(false);
       }
     };
@@ -149,6 +193,35 @@ export default function DashboardPage() {
     await supabase.auth.updateUser({ data: { google_min_rating: value } });
   };
 
+  const saveMonthlyGoal = async (value: number) => {
+    const safeValue = Math.max(1, Math.min(10000, value || 1));
+    setMonthlyGoal(safeValue);
+    await supabase.auth.updateUser({ data: { monthly_goal: safeValue } });
+  };
+
+  const saveSocialLinks = async () => {
+    const socialLinks = {
+      facebook_url: business.facebook_url.trim(),
+      instagram_url: business.instagram_url.trim(),
+      linkedin_url: business.linkedin_url.trim(),
+    };
+    const { error } = await supabase.auth.updateUser({ data: socialLinks });
+    setProfileMessage(error ? error.message : 'Socialinių tinklų nuorodos išsaugotos.');
+  };
+
+  const deleteAllFeedback = async () => {
+    if (!user || feedbacks.length === 0) return;
+    const confirmed = window.confirm('Ar tikrai norite ištrinti visus atsiliepimus? Šio veiksmo atšaukti nebus galima.');
+    if (!confirmed) return;
+
+    const { error } = await supabase.from('feedbacks').delete().eq('user_id', user.id);
+    if (error) {
+      setProfileMessage(`Atsiliepimų ištrinti nepavyko: ${error.message}`);
+      return;
+    }
+    setFeedbacks([]);
+  };
+
   const uploadLogo = async (file: File) => {
     if (!user) return;
     if (!file.type.startsWith('image/')) {
@@ -194,6 +267,15 @@ export default function DashboardPage() {
   const reviewUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/review?business=${encodeURIComponent(user?.id || '')}&google=${encodeURIComponent(business.google_review_url)}&threshold=${business.google_min_rating}&logo=${encodeURIComponent(business.logo_url)}`
     : '';
+
+  const shareReviewLink = async () => {
+    if (!reviewUrl) return;
+    if (navigator.share) {
+      await navigator.share({ title: `${business.name || 'Įmonės'} atsiliepimas`, text: 'Pasidalinkite savo patirtimi.', url: reviewUrl });
+      return;
+    }
+    await navigator.clipboard?.writeText(reviewUrl);
+  };
 
   if (loading) {
     return (
@@ -315,10 +397,10 @@ export default function DashboardPage() {
 
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 {[
-                  { label: 'QR nuskaitymai', value: '1,248', change: '+14.2% šį mėnesį', icon: ScanLine },
-                  { label: 'Gauti atsiliepimai', value: feedbacks.length.toString(), change: '+8.1% šį mėnesį', icon: MessageSquare },
-                  { label: 'Vid. įvertinimas', value: '4.9 / 5', change: '+0.2 šį mėnesį', icon: Star },
-                  { label: 'Google paspaudimai', value: feedbacks.filter(f => f.sentToGoogle).length.toString(), change: '+22.5% šį mėnesį', icon: Globe2 }
+                  { label: 'QR nuskaitymai', value: qrScans.length.toString(), change: 'viso nuskaitymų', icon: ScanLine },
+                  { label: 'Gauti atsiliepimai', value: feedbacks.length.toString(), change: `${reviewConversion}% konversija`, icon: MessageSquare },
+                  { label: 'Vid. įvertinimas', value: feedbacks.length ? `${averageRating} / 5` : '—', change: 'iš realių atsiliepimų', icon: Star },
+                  { label: 'Google paspaudimai', value: googleRedirects.toString(), change: 'viso nukreipimų', icon: Globe2 }
                 ].map((s, i) => (
                   <div key={i} className="bg-white border border-[#dadce0] p-5 rounded-2xl shadow-sm">
                     <div className="flex items-center justify-between mb-3">
@@ -334,14 +416,14 @@ export default function DashboardPage() {
               <div className="grid lg:grid-cols-[1.45fr_0.85fr] gap-5 mb-8">
                 <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm">
                   <div className="flex items-start justify-between mb-6"><div><h2 className="font-bold text-lg">Atsiliepimų dinamika</h2><p className="text-sm text-[#5f6368] mt-1">Augimas per paskutines 6 savaites</p></div><button onClick={() => setPage('analytics')} className="text-xs font-semibold text-[#1a73e8] flex items-center gap-1">Visa analitika <ArrowUpRight size={14} /></button></div>
-                  <div className="flex items-end gap-3 h-44 border-b border-l border-[#dadce0] px-3 pb-0">{[34, 47, 42, 62, 58, 76, 91].map((height, index) => <div key={index} className="flex-1 flex flex-col justify-end gap-2"><div className="text-center text-[10px] text-[#80868b]">{[18, 24, 21, 32, 29, 41, 48][index]}</div><div className="bg-[#1a73e8] rounded-t-md min-h-2" style={{ height: `${height}%` }} /></div>)}</div>
-                  <div className="flex justify-between text-xs text-[#80868b] mt-3 px-1"><span>Lie 08</span><span>Lie 15</span><span>Lie 22</span><span>Lie 29</span><span>Rgp 05</span><span>Rgp 12</span><span>Dabar</span></div>
+                  <div className="flex items-end gap-3 h-44 border-b border-l border-[#dadce0] px-3 pb-0">{feedbacksByWeek.map((count, index) => { const maxCount = Math.max(...feedbacksByWeek, 1); const height = count ? Math.max(8, (count / maxCount) * 100) : 3; return <div key={index} className="flex-1 flex flex-col justify-end gap-2"><div className="text-center text-[10px] text-[#80868b]">{count}</div><div className="bg-[#1a73e8] rounded-t-md min-h-1" style={{ height: `${height}%` }} /></div> })}</div>
+                  <div className="flex justify-between text-xs text-[#80868b] mt-3 px-1"><span>Prieš 6 sav.</span><span>Prieš 3 sav.</span><span>Ši savaitė</span></div>
                 </div>
-                <div className="bg-[#202124] rounded-2xl p-6 text-white shadow-sm"><div className="flex items-center justify-between mb-5"><div><p className="text-xs uppercase tracking-wider text-[#9aa0a6]">ŠIO MĖNESIO TIKSLAS</p><h2 className="font-bold text-lg mt-1">Gauti 60 atsiliepimų</h2></div><span className="text-[#81c995] text-sm font-bold">80%</span></div><div className="h-2 bg-[#5f6368] rounded-full overflow-hidden mb-3"><div className="h-full w-4/5 bg-[#81c995] rounded-full" /></div><p className="text-sm text-[#bdc1c6]">48 iš 60 atsiliepimų surinkta</p><button onClick={() => setPage('qr')} className="mt-6 w-full bg-white text-[#202124] hover:bg-[#f1f3f4] rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2"><QrCode size={16} /> Dalintis QR kodu</button></div>
+                <div className="bg-[#202124] rounded-2xl p-6 text-white shadow-sm"><div className="flex items-center justify-between mb-5"><div><p className="text-xs uppercase tracking-wider text-[#9aa0a6]">ŠIO MĖNESIO TIKSLAS</p><h2 className="font-bold text-lg mt-1">Gauti {monthlyGoal} atsiliepimų</h2></div><span className="text-[#81c995] text-sm font-bold">{monthlyGoalProgress}%</span></div><div className="h-2 bg-[#5f6368] rounded-full overflow-hidden mb-3"><div className="h-full bg-[#81c995] rounded-full" style={{ width: `${monthlyGoalProgress}%` }} /></div><p className="text-sm text-[#bdc1c6]">{monthlyFeedbacks} iš {monthlyGoal} šio mėnesio atsiliepimų</p><button onClick={shareReviewLink} className="mt-6 w-full bg-white text-[#202124] hover:bg-[#f1f3f4] rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2"><Send size={16} /> Dalintis QR nuoroda</button></div>
               </div>
 
               <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-5">
-                <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><div className="flex items-center justify-between mb-5"><div><h2 className="font-bold text-lg">Naujausi atsiliepimai</h2><p className="text-sm text-[#5f6368] mt-1">Sekite klientų nuotaiką realiu laiku</p></div><button onClick={() => setPage('feedback')} className="text-xs font-semibold text-[#1a73e8]">Peržiūrėti visus</button></div><div className="space-y-4"><div className="flex gap-3"><span className="h-9 w-9 rounded-full bg-[#e6f4ea] text-[#137333] grid place-items-center text-sm font-bold">A</span><div className="flex-1"><div className="flex justify-between gap-3"><span className="font-semibold text-sm">Aistė P.</span><span className="text-xs text-[#80868b]">prieš 2 val.</span></div><div className="flex items-center gap-1 text-[#fbbc04] text-xs mt-1"><Star size={13} fill="currentColor" /> 5.0</div><p className="text-sm text-[#3c4043] mt-1">„Puikus aptarnavimas, tikrai sugrįšiu!“</p></div></div><div className="flex gap-3"><span className="h-9 w-9 rounded-full bg-[#e8f0fe] text-[#1a73e8] grid place-items-center text-sm font-bold">M</span><div className="flex-1"><div className="flex justify-between gap-3"><span className="font-semibold text-sm">Mantas J.</span><span className="text-xs text-[#80868b]">vakar</span></div><div className="flex items-center gap-1 text-[#fbbc04] text-xs mt-1"><Star size={13} fill="currentColor" /> 5.0</div><p className="text-sm text-[#3c4043] mt-1">„Greita, paprasta ir profesionalu.“</p></div></div></div></div>
+                <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><div className="flex items-center justify-between mb-5"><div><h2 className="font-bold text-lg">Naujausi atsiliepimai</h2><p className="text-sm text-[#5f6368] mt-1">Tikri klientų įrašai iš QR srauto</p></div><button onClick={() => setPage('feedback')} className="text-xs font-semibold text-[#1a73e8]">Peržiūrėti visus</button></div><div className="space-y-4">{feedbacks.slice(0, 3).map((item) => <div key={item.id} className="flex gap-3"><span className={`h-9 w-9 rounded-full grid place-items-center text-sm font-bold ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.name[0]?.toUpperCase() || '?'}</span><div className="flex-1"><div className="flex justify-between gap-3"><span className="font-semibold text-sm">{item.name}</span><span className="text-xs text-[#80868b]">{item.date}</span></div><div className="flex items-center gap-1 text-[#f29900] text-xs mt-1">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={13} fill={star <= item.rating ? 'currentColor' : 'none'} />)}</div><p className="text-sm text-[#3c4043] mt-1 line-clamp-2">{item.comment}</p></div></div>)}{feedbacks.length === 0 && <p className="text-sm text-[#80868b]">Atsiliepimų dar nėra.</p>}</div></div>
                 <div className="bg-[#e8f0fe] border border-[#c6dafc] rounded-2xl p-6"><span className="h-10 w-10 rounded-xl bg-white text-[#1a73e8] grid place-items-center mb-5"><Sparkles size={19} /></span><h2 className="font-bold text-lg mb-2">Jūsų reputacija auga</h2><p className="text-sm text-[#3c4043] leading-relaxed">Šį mėnesį klientai dažniau renkasi jus dėl aukšto įvertinimo. Tęskite QR kampaniją, kad išlaikytumėte tempą.</p><button onClick={() => setPage('analytics')} className="mt-5 text-sm font-bold text-[#1a73e8] flex items-center gap-1">Sužinoti daugiau <ArrowUpRight size={15} /></button></div>
               </div>
             </>
@@ -349,10 +431,11 @@ export default function DashboardPage() {
 
           {page === 'feedback' && (
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6"><h1 className="text-3xl font-extrabold text-[#202124]">Atsiliepimai</h1><select value={feedbackSort} onChange={(event) => setFeedbackSort(event.target.value as 'newest' | 'oldest')} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]"><option value="newest">Naujausi pirmi</option><option value="oldest">Seniausi pirmi</option></select></div>
-              <div className="space-y-3">
-                {feedbacks.length === 0 && <div className="bg-white border border-[#dadce0] rounded-2xl p-6 sm:p-8 shadow-sm"><div className="flex items-start gap-4 mb-7"><span className="h-12 w-12 shrink-0 rounded-2xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center"><MessageSquare size={23} /></span><div><h2 className="font-bold text-lg">Atsiliepimai atsiras čia</h2><p className="text-sm text-[#5f6368] mt-1 max-w-lg">Kai klientai įvertins jūsų paslaugą, čia matysite jų vardus, žvaigždutes ir parašytas žinutes.</p></div></div><div className="grid sm:grid-cols-3 gap-3"><div className="rounded-xl bg-[#f8fafd] border border-[#dadce0] p-4"><div className="text-xs text-[#5f6368]">Gauti atsiliepimai</div><div className="text-2xl font-extrabold mt-2">0</div></div><div className="rounded-xl bg-[#f8fafd] border border-[#dadce0] p-4"><div className="text-xs text-[#5f6368]">Vidutinis įvertinimas</div><div className="text-2xl font-extrabold mt-2">—</div></div><div className="rounded-xl bg-[#f8fafd] border border-[#dadce0] p-4"><div className="text-xs text-[#5f6368]">Nukreipta į Google</div><div className="text-2xl font-extrabold mt-2">0</div></div></div><div className="mt-5 rounded-xl bg-[#f1f3f4] px-4 py-3 text-sm text-[#5f6368] flex items-center gap-2"><Star size={16} className="text-[#f29900]" /> Geri įvertinimai bus pažymėti kaip nukreipti į Google, o pastabos liks privačios vadovui.</div></div>}
-                {[...feedbacks].sort((first, second) => feedbackSort === 'newest' ? new Date(second.createdAt || second.date).getTime() - new Date(first.createdAt || first.date).getTime() : new Date(first.createdAt || first.date).getTime() - new Date(second.createdAt || second.date).getTime()).map((item) => (
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6"><div><h1 className="text-3xl font-extrabold text-[#202124]">Atsiliepimai</h1><p className="text-sm text-[#5f6368] mt-2">Klientų įvertinimai, žinutės ir nukreipimai į Google vienoje vietoje.</p></div><div className="flex items-center gap-2"><select value={feedbackSort} onChange={(event) => setFeedbackSort(event.target.value as 'newest' | 'oldest' | 'rating-high' | 'rating-low')} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]"><option value="newest">Naujausi pirmi</option><option value="oldest">Seniausi pirmi</option><option value="rating-high">Daugiausia žvaigždučių</option><option value="rating-low">Mažiausiai žvaigždučių</option></select><button type="button" onClick={deleteAllFeedback} disabled={feedbacks.length === 0} className="border border-[#f5b7b1] text-[#c5221f] hover:bg-[#fce8e6] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2.5 text-sm font-semibold">Ištrinti visus</button></div></div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6"><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Gauti atsiliepimai</div><div className="text-2xl font-extrabold mt-2">{feedbacks.length}</div></div><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Vidutinis įvertinimas</div><div className="flex items-center gap-2 mt-2"><span className="text-2xl font-extrabold">{averageRating}</span>{feedbacks.length > 0 && <span className="flex text-[#f29900]">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= Math.round(Number(averageRating)) ? 'currentColor' : 'none'} />)}</span>}</div></div><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Nukreipta į Google</div><div className="text-2xl font-extrabold mt-2">{googleRedirects}</div></div></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {feedbacks.length === 0 && <div className="sm:col-span-2 xl:col-span-3 bg-white border border-[#dadce0] rounded-2xl p-6 sm:p-8 shadow-sm"><div className="flex items-start gap-4"><span className="h-12 w-12 shrink-0 rounded-2xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center"><MessageSquare size={23} /></span><div><h2 className="font-bold text-lg">Atsiliepimų dar nėra</h2><p className="text-sm text-[#5f6368] mt-1 max-w-lg">Kai klientai įvertins jūsų paslaugą, jų vardai, žvaigždutės ir žinutės bus rodomi šioje skiltyje.</p></div></div></div>}
+                {[...feedbacks].sort((first, second) => feedbackSort === 'rating-high' ? second.rating - first.rating : feedbackSort === 'rating-low' ? first.rating - second.rating : feedbackSort === 'newest' ? new Date(second.createdAt || second.date).getTime() - new Date(first.createdAt || first.date).getTime() : new Date(first.createdAt || first.date).getTime() - new Date(second.createdAt || second.date).getTime()).map((item) => (
                   <div key={item.id} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="flex items-start gap-4"><span className={`h-11 w-11 shrink-0 rounded-full grid place-items-center text-sm font-bold ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.name[0]?.toUpperCase() || '?'}</span><div className="min-w-0 flex-1"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div className="flex flex-wrap items-center gap-3"><span className="font-bold text-[#202124]">{item.name}</span><span className="flex items-center text-[#f29900] text-sm gap-1">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= item.rating ? 'currentColor' : 'none'} />)} <span className="text-[#5f6368] ml-1">{item.rating}/5</span></span></div><span className="text-xs text-[#80868b]">{item.date}</span></div><div className={`inline-flex text-[11px] font-bold uppercase tracking-wide rounded-full px-2 py-1 mt-3 ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.sentToGoogle ? 'Nukreipta į Google' : 'Privati žinutė vadovui'}</div><p className="text-[#3c4043] text-sm leading-relaxed mt-3">{item.comment}</p></div></div></div>
                 ))}
               </div>
@@ -362,8 +445,8 @@ export default function DashboardPage() {
           {page === 'analytics' && (
             <div>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-8"><div><span className="text-xs font-bold text-[#1a73e8] uppercase tracking-wider">DUOMENYS</span><h1 className="text-3xl font-extrabold mt-1">Analitika</h1><p className="text-sm text-[#5f6368] mt-1">Supraskite, kas labiausiai veikia jūsų reputaciją.</p></div><select className="bg-white border border-[#dadce0] rounded-xl px-3 py-2 text-sm text-[#3c4043]"><option>Šis mėnuo</option><option>Praėjęs mėnuo</option></select></div>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[{ label: 'Konversija į atsiliepimą', value: '18.6%', change: '+4.2%' }, { label: 'Teigiami vertinimai', value: '92%', change: '+6.8%' }, { label: 'Atsakas į problemas', value: '2.4 val.', change: '-31%' }, { label: 'Nukreipta į Google', value: feedbacks.filter((feedback) => feedback.sentToGoogle).length.toString(), change: 'realūs paspaudimai' }].map((stat) => <div key={stat.label} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><p className="text-xs text-[#5f6368]">{stat.label}</p><div className="flex items-end justify-between mt-3"><span className="text-2xl font-extrabold">{stat.value}</span><span className="text-xs font-bold text-[#137333]">{stat.change}</span></div></div>)}</div>
-              <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><h2 className="font-bold text-lg">Vertinimų pasiskirstymas</h2><p className="text-sm text-[#5f6368] mt-1 mb-6">Šio mėnesio gautų atsiliepimų kokybė</p>{[{ stars: '5 žvaigždutės', value: 78, color: 'bg-[#34a853]' }, { stars: '4 žvaigždutės', value: 14, color: 'bg-[#8ab4f8]' }, { stars: '3 žvaigždutės', value: 5, color: 'bg-[#fbbc04]' }, { stars: '1–2 žvaigždutės', value: 3, color: 'bg-[#ea4335]' }].map((row) => <div key={row.stars} className="flex items-center gap-3 mb-4 text-sm"><span className="w-28 text-[#5f6368]">{row.stars}</span><div className="flex-1 h-2 bg-[#f1f3f4] rounded-full overflow-hidden"><div className={`h-full ${row.color} rounded-full`} style={{ width: `${row.value}%` }} /></div><span className="w-10 text-right font-semibold">{row.value}%</span></div>)}</div>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[{ label: 'Konversija į atsiliepimą', value: `${reviewConversion}%`, change: `${feedbacks.length} iš ${qrScans.length} nuskaitymų` }, { label: 'Teigiami vertinimai', value: `${positiveRate}%`, change: `${positiveFeedbacks} atsiliepimai virš slenksčio` }, { label: 'Atsiliepimų vidurkis', value: averageRating === '—' ? '—' : `${averageRating} / 5`, change: `${feedbacks.length} įvertinimai` }, { label: 'Nukreipta į Google', value: googleRedirects.toString(), change: 'realūs paspaudimai' }].map((stat) => <div key={stat.label} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><p className="text-xs text-[#5f6368]">{stat.label}</p><div className="flex items-end justify-between mt-3"><span className="text-2xl font-extrabold">{stat.value}</span><span className="text-xs font-bold text-[#137333]">{stat.change}</span></div></div>)}</div>
+              <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><h2 className="font-bold text-lg">Vertinimų pasiskirstymas</h2><p className="text-sm text-[#5f6368] mt-1 mb-6">Realus gautų klientų įvertinimų skaičius</p>{ratingDistribution.map((row) => <div key={row.rating} className="flex items-center gap-3 mb-4 text-sm"><span className="w-28 text-[#5f6368]">{row.rating} žvaigždutės</span><div className="flex-1 h-2 bg-[#f1f3f4] rounded-full overflow-hidden"><div className={`h-full rounded-full ${row.rating >= 4 ? 'bg-[#34a853]' : row.rating === 3 ? 'bg-[#fbbc04]' : 'bg-[#ea4335]'}`} style={{ width: `${(row.count / maxRatingCount) * 100}%` }} /></div><span className="w-16 text-right font-semibold">{row.count} vnt.</span></div>)}</div>
             </div>
           )}
 
@@ -429,6 +512,14 @@ export default function DashboardPage() {
                       className="min-w-0 flex-1 bg-white border border-[#dadce0] rounded-xl p-3 text-sm text-[#202124] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]"
                     />
                     <button onClick={changePassword} className="bg-[#f1f3f4] hover:bg-[#e8eaed] text-[#3c4043] px-4 rounded-xl text-sm font-semibold">Pakeisti</button>
+                  </div>
+                </div>
+                <div>
+                  <div className="block text-xs font-semibold text-[#5f6368] mb-2">Mėnesio atsiliepimų tikslas</div>
+                  <p className="text-xs text-[#80868b] mb-3">Nustatykite, kiek atsiliepimų norite surinkti per mėnesį.</p>
+                  <div className="flex items-center gap-3">
+                    <input type="number" min="1" max="10000" value={monthlyGoal} onChange={(event) => saveMonthlyGoal(Number(event.target.value))} className="w-32 bg-white border border-[#dadce0] rounded-xl p-3 text-sm text-[#202124] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]" />
+                    <span className="text-sm text-[#5f6368]">atsiliepimų per mėnesį</span>
                   </div>
                 </div>
                 {profileMessage && <p className="text-sm text-[#1a73e8]">{profileMessage}</p>}
