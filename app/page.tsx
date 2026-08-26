@@ -1,4 +1,4 @@
-import { Check, Filter, Sparkles, ArrowRight } from 'lucide-react';
+import { Check, Filter, Sparkles, ArrowRight, BarChart3, MessageCircle, QrCode, ShieldCheck, Star, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Home() {
@@ -11,7 +11,7 @@ export default function Home() {
             <Sparkles size={18} />
           </span>
           <span className="text-lg font-bold">
-            Review<span className="text-[#1a73e8]">Flow</span>
+            <span className="text-[#1a73e8]">Get</span>review
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -52,6 +52,27 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="pb-16">
+          <div className="bg-[#202124] rounded-3xl p-6 sm:p-10 text-white overflow-hidden relative">
+            <div className="relative z-10 grid lg:grid-cols-[0.85fr_1.15fr] gap-10 items-center">
+              <div>
+                <p className="text-xs font-bold tracking-widest text-[#8ab4f8] mb-3">VIENA VIETA VISKAM</p>
+                <h2 className="text-3xl sm:text-4xl font-extrabold leading-tight mb-4">Žinokite, ką klientai galvoja apie jus.</h2>
+                <p className="text-[#bdc1c6] leading-relaxed mb-6">Getreview surenka kiekvieną signalą ir paverčia jį aiškiais veiksmais: daugiau gerų atsiliepimų, greitesnis reagavimas ir stipresnė reputacija.</p>
+                <div className="flex flex-wrap gap-3 text-sm text-[#e8eaed]">
+                  <span className="flex items-center gap-2"><ShieldCheck size={16} className="text-[#81c995]" /> Privatūs atsakymai</span>
+                  <span className="flex items-center gap-2"><TrendingUp size={16} className="text-[#8ab4f8]" /> Aiškūs rezultatai</span>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl p-5 text-[#202124] shadow-2xl shadow-black/30">
+                <div className="flex justify-between items-center mb-5"><div><p className="text-xs text-[#5f6368]">BENDRAS ĮVERTINIMAS</p><div className="flex items-center gap-2 mt-1"><span className="text-3xl font-extrabold">4.9</span><span className="text-[#fbbc04] flex gap-0.5"><Star size={15} fill="currentColor" /><Star size={15} fill="currentColor" /><Star size={15} fill="currentColor" /><Star size={15} fill="currentColor" /><Star size={15} fill="currentColor" /></span></div></div><span className="text-xs font-semibold text-[#137333] bg-[#e6f4ea] px-2.5 py-1.5 rounded-lg">+18.4% šį mėn.</span></div>
+                <div className="flex items-end gap-2 h-28 border-b border-[#dadce0] pb-2">{[38, 52, 45, 68, 61, 82, 96].map((height, index) => <div key={index} className="flex-1 bg-[#8ab4f8] rounded-t-md" style={{ height: `${height}%` }} />)}</div>
+                <div className="flex justify-between text-[11px] text-[#80868b] mt-2"><span>Prieš 6 sav.</span><span>Dabar</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="border-t border-[#dadce0] py-16">
           <div className="max-w-3xl mx-auto text-center mb-10">
             <p className="text-xs font-bold tracking-widest text-[#1a73e8] mb-3">KAIP TAI VEIKIA</p>
@@ -79,6 +100,41 @@ export default function Home() {
               <h3 className="font-bold text-lg mb-2">Auginkite reputaciją</h3>
               <p className="text-sm text-[#5f6368]">Stebėkite rezultatus vienoje valdymo panelėje ir greičiau išspręskite problemas.</p>
             </div>
+          </div>
+        </section>
+
+        <section className="border-t border-[#dadce0] py-16">
+          <div className="text-center mb-10">
+            <p className="text-xs font-bold tracking-widest text-[#1a73e8] mb-3">KODĖL GETREVIEW</p>
+            <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">Mažiau spėlionių. Daugiau augimo.</h2>
+            <p className="text-[#5f6368]">Viskas, ko reikia reputacijai valdyti, be sudėtingų lentelių ir prarastų žinučių.</p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { icon: QrCode, title: 'Vienas QR kodas', text: 'Padėkite klientui palikti atsiliepimą vos keliais paspaudimais.' },
+              { icon: BarChart3, title: 'Gyva analitika', text: 'Matykite tendencijas pagal laiką, vietą ir įvertinimą.' },
+              { icon: MessageCircle, title: 'Greitas atsakas', text: 'Pastebėkite problemas privačiai, kol jos netapo viešos.' },
+              { icon: TrendingUp, title: 'Daugiau pasitikėjimo', text: 'Geresnis reitingas padeda naujiems klientams apsispręsti.' },
+            ].map(({ icon: Icon, title, text }) => (
+              <div key={title} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm">
+                <Icon size={22} className="text-[#1a73e8] mb-5" />
+                <h3 className="font-bold mb-2">{title}</h3>
+                <p className="text-sm text-[#5f6368] leading-relaxed">{text}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="border-t border-[#dadce0] py-16">
+          <div className="max-w-3xl mx-auto text-center mb-10"><p className="text-xs font-bold tracking-widest text-[#1a73e8] mb-3">KLIENTŲ PATIRTIS</p><h2 className="text-3xl sm:text-4xl font-extrabold mb-4">Reputacija, kuri dirba už jus</h2></div>
+          <div className="grid md:grid-cols-3 gap-5">
+            {[
+              { quote: 'Pagaliau matome ne tik žvaigždučių skaičių, bet ir tai, ką turime pagerinti.', name: 'Ieva M.', role: 'Grožio studijos savininkė' },
+              { quote: 'QR kodą klientai naudoja iškart po vizito. Atsiliepimų tapo gerokai daugiau.', name: 'Tomas R.', role: 'Restorano vadovas' },
+              { quote: 'Dashboard leidžia komandai greitai suprasti, kas veikia kiekvienoje vietoje.', name: 'Gabija K.', role: 'Paslaugų tinklo vadovė' },
+            ].map((testimonial) => (
+              <div key={testimonial.name} className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><div className="flex gap-1 text-[#fbbc04] mb-4"><Star size={15} fill="currentColor" /><Star size={15} fill="currentColor" /><Star size={15} fill="currentColor" /><Star size={15} fill="currentColor" /><Star size={15} fill="currentColor" /></div><p className="text-[#3c4043] leading-relaxed mb-6">„{testimonial.quote}“</p><p className="font-bold text-sm">{testimonial.name}</p><p className="text-xs text-[#5f6368] mt-1">{testimonial.role}</p></div>
+            ))}
           </div>
         </section>
 

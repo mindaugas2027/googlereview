@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { Sparkles } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +17,9 @@ const withTimeout = <T,>(promise: PromiseLike<T>, milliseconds = 10000) =>
   ])
 
 export default function LoginPage() {
+  const [companyName, setCompanyName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
@@ -38,7 +43,18 @@ export default function LoginPage() {
       )
 
       if (isSignUp) {
-        const { data, error } = await withTimeout(supabase.auth.signUp({ email, password }))
+        const { data, error } = await withTimeout(supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              company_name: companyName.trim(),
+              first_name: firstName.trim(),
+              phone: phone.trim(),
+              trial_started_at: new Date().toISOString(),
+            },
+          },
+        }))
         if (error) {
           setMessage({ text: error.message, type: 'error' })
         } else if (data.session) {
@@ -76,6 +92,31 @@ export default function LoginPage() {
       fontFamily: 'system-ui, -apple-system, sans-serif',
       padding: '20px'
     }}>
+      <Link href="/" aria-label="Grįžti į Getreview pradžios puslapį" style={{
+        position: 'absolute',
+        top: '24px',
+        left: '28px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '10px',
+        color: '#202124',
+        textDecoration: 'none',
+        fontSize: '20px',
+        fontWeight: '700'
+      }}>
+        <span style={{
+          display: 'grid',
+          placeItems: 'center',
+          width: '40px',
+          height: '40px',
+          borderRadius: '12px',
+          background: '#1a73e8',
+          color: 'white'
+        }}>
+          <Sparkles size={19} />
+        </span>
+        <span><span style={{ color: '#1a73e8' }}>Get</span>review</span>
+      </Link>
       <div style={{
         width: '100%',
         maxWidth: '420px',
@@ -87,21 +128,6 @@ export default function LoginPage() {
       }}>
         {/* Antraštė */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '48px',
-            height: '48px',
-            borderRadius: '12px',
-            background: '#1a73e8',
-            color: 'white',
-            fontWeight: 'bold',
-            fontSize: '20px',
-            marginBottom: '16px'
-          }}>
-            RF
-          </div>
           <h1 style={{ fontSize: '24px', fontWeight: '700', margin: '0 0 8px 0', color: '#202124' }}>
             {isSignUp ? 'Sukurti paskyrą' : 'Sveiki sugrįžę'}
           </h1>
@@ -127,6 +153,62 @@ export default function LoginPage() {
 
         {/* Forma */}
         <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {isSignUp && (
+            <>
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#3c4043', marginBottom: '6px' }}>
+                  Įmonės pavadinimas*
+                </label>
+                <input
+                  type="text"
+                  placeholder="Jūsų įmonė"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  required
+                  autoComplete="organization"
+                  style={{
+                    width: '100%', padding: '12px 16px', borderRadius: '8px', backgroundColor: '#ffffff',
+                    border: '1px solid #dadce0', color: '#202124', fontSize: '15px', outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#3c4043', marginBottom: '6px' }}>
+                  Vardas*
+                </label>
+                <input
+                  type="text"
+                  placeholder="Jūsų vardas"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  autoComplete="given-name"
+                  style={{
+                    width: '100%', padding: '12px 16px', borderRadius: '8px', backgroundColor: '#ffffff',
+                    border: '1px solid #dadce0', color: '#202124', fontSize: '15px', outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#3c4043', marginBottom: '6px' }}>
+                  Tel. nr.
+                </label>
+                <input
+                  type="tel"
+                  placeholder="+370 600 00000"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  autoComplete="tel"
+                  style={{
+                    width: '100%', padding: '12px 16px', borderRadius: '8px', backgroundColor: '#ffffff',
+                    border: '1px solid #dadce0', color: '#202124', fontSize: '15px', outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            </>
+          )}
           <div>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#3c4043', marginBottom: '6px' }}>
               El. paštas
@@ -137,6 +219,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
               style={{
                 width: '100%',
                 padding: '12px 16px',
@@ -161,6 +244,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete={isSignUp ? 'new-password' : 'current-password'}
               style={{
                 width: '100%',
                 padding: '12px 16px',
