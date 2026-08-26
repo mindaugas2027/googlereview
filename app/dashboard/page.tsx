@@ -15,6 +15,7 @@ type Feedback = {
   rating: number;
   comment: string;
   date: string;
+  createdAt?: string;
   sentToGoogle: boolean;
 };
 
@@ -32,12 +33,14 @@ export default function DashboardPage() {
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [page, setPage] = useState<'overview' | 'feedback' | 'qr' | 'analytics' | 'locations' | 'settings' | 'billing'>('overview');
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [feedbackSort, setFeedbackSort] = useState<'newest' | 'oldest'>('newest');
 
   const [business, setBusiness] = useState({
     name: '',
     brand_color: '#2563eb',
     google_review_url: '',
     google_min_rating: 4,
+    logo_url: '',
   });
 
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
@@ -61,11 +64,13 @@ export default function DashboardPage() {
         const savedBusinessName = session.user.user_metadata?.company_name;
         const savedGoogleReviewUrl = session.user.user_metadata?.google_review_url;
         const savedGoogleMinRating = Number(session.user.user_metadata?.google_min_rating) || 4;
+        const savedLogoUrl = session.user.user_metadata?.logo_url || '';
         setBusiness((currentBusiness) => ({
           ...currentBusiness,
           name: savedBusinessName || currentBusiness.name,
           google_review_url: savedGoogleReviewUrl || currentBusiness.google_review_url,
           google_min_rating: savedGoogleMinRating,
+          logo_url: savedLogoUrl,
         }));
         const { data: savedFeedbacks } = await supabase
           .from('feedbacks')
@@ -76,6 +81,7 @@ export default function DashboardPage() {
           setFeedbacks(savedFeedbacks.map((feedback) => ({
             ...feedback,
             date: new Date(feedback.created_at).toLocaleDateString('lt-LT'),
+            createdAt: feedback.created_at,
             sentToGoogle: feedback.sent_to_google,
           })));
         }
@@ -131,6 +137,33 @@ export default function DashboardPage() {
     await supabase.auth.updateUser({ data: { google_min_rating: value } });
   };
 
+  const uploadLogo = async (file: File) => {
+    if (!user) return;
+    if (!file.type.startsWith('image/')) {
+      setProfileMessage('Įkelkite paveikslėlį.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setProfileMessage('Logotipas turi būti mažesnis nei 2 MB.');
+      return;
+    }
+    const extension = file.name.split('.').pop() || 'png';
+    const path = `${user.id}/logo-${Date.now()}.${extension}`;
+    const { error: uploadError } = await supabase.storage.from('logos').upload(path, file, { upsert: true, contentType: file.type });
+    if (uploadError) {
+      setProfileMessage(`Logotipo įkelti nepavyko: ${uploadError.message}`);
+      return;
+    }
+    const { data } = supabase.storage.from('logos').getPublicUrl(path);
+    const { error: saveError } = await supabase.auth.updateUser({ data: { logo_url: data.publicUrl } });
+    if (saveError) {
+      setProfileMessage(saveError.message);
+      return;
+    }
+    setBusiness((currentBusiness) => ({ ...currentBusiness, logo_url: data.publicUrl }));
+    setProfileMessage('Logotipas įkeltas.');
+  };
+
   const renewSubscription = async () => {
     if (!user) return;
     const renewedAt = new Date().toISOString();
@@ -147,7 +180,7 @@ export default function DashboardPage() {
   };
 
   const reviewUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/review?business=${encodeURIComponent(user?.id || '')}&google=${encodeURIComponent(business.google_review_url)}&threshold=${business.google_min_rating}`
+    ? `${window.location.origin}/review?business=${encodeURIComponent(user?.id || '')}&google=${encodeURIComponent(business.google_review_url)}&threshold=${business.google_min_rating}&logo=${encodeURIComponent(business.logo_url)}`
     : '';
 
   if (loading) {
@@ -304,21 +337,11 @@ export default function DashboardPage() {
 
           {page === 'feedback' && (
             <div>
-              <h1 className="text-3xl font-extrabold text-[#202124] mb-2">Atsiliepimai</h1>
-              <p className="text-sm text-[#5f6368] mb-6">Visi gauti klientų vertinimai.</p>
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6"><h1 className="text-3xl font-extrabold text-[#202124]">Atsiliepimai</h1><select value={feedbackSort} onChange={(event) => setFeedbackSort(event.target.value as 'newest' | 'oldest')} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]"><option value="newest">Naujausi pirmi</option><option value="oldest">Seniausi pirmi</option></select></div>
               <div className="space-y-3">
-                {feedbacks.length === 0 && <div className="bg-white border border-dashed border-[#b7bdc4] rounded-2xl p-10 text-center"><span className="h-12 w-12 rounded-2xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center mx-auto mb-4"><MessageSquare size={22} /></span><h2 className="font-bold text-lg mb-2">Čia matysite klientų balsą</h2><p className="text-sm text-[#5f6368] max-w-sm mx-auto mb-5">Sukurkite QR kodą ir pradėkite rinkti pirmuosius atsiliepimus vienoje vietoje.</p><button onClick={() => setPage('qr')} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white px-4 py-2.5 rounded-xl text-sm font-semibold inline-flex items-center gap-2"><Plus size={16} /> Sukurti QR kodą</button></div>}
-                {feedbacks.map((item) => (
-                  <div key={item.id} className="p-4 bg-white border border-[#dadce0] rounded-xl flex justify-between items-center shadow-sm">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-[#202124] text-sm">{item.name}</span>
-                        <span className="flex items-center text-[#fbbc04] text-xs gap-1"><Star size={14} fill="currentColor" /> {item.rating}.0</span>
-                      </div>
-                      <p className="text-[#3c4043] text-sm">{item.comment}</p>
-                    </div>
-                    <span className="text-xs text-[#5f6368]">{item.date}</span>
-                  </div>
+                {feedbacks.length === 0 && <div className="bg-white border border-[#dadce0] rounded-2xl p-6 sm:p-8 shadow-sm"><div className="flex items-start gap-4 mb-7"><span className="h-12 w-12 shrink-0 rounded-2xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center"><MessageSquare size={23} /></span><div><h2 className="font-bold text-lg">Atsiliepimai atsiras čia</h2><p className="text-sm text-[#5f6368] mt-1 max-w-lg">Kai klientai įvertins jūsų paslaugą, čia matysite jų vardus, žvaigždutes ir parašytas žinutes.</p></div></div><div className="grid sm:grid-cols-3 gap-3"><div className="rounded-xl bg-[#f8fafd] border border-[#dadce0] p-4"><div className="text-xs text-[#5f6368]">Gauti atsiliepimai</div><div className="text-2xl font-extrabold mt-2">0</div></div><div className="rounded-xl bg-[#f8fafd] border border-[#dadce0] p-4"><div className="text-xs text-[#5f6368]">Vidutinis įvertinimas</div><div className="text-2xl font-extrabold mt-2">—</div></div><div className="rounded-xl bg-[#f8fafd] border border-[#dadce0] p-4"><div className="text-xs text-[#5f6368]">Nukreipta į Google</div><div className="text-2xl font-extrabold mt-2">0</div></div></div><div className="mt-5 rounded-xl bg-[#f1f3f4] px-4 py-3 text-sm text-[#5f6368] flex items-center gap-2"><Star size={16} className="text-[#f29900]" /> Geri įvertinimai bus pažymėti kaip nukreipti į Google, o pastabos liks privačios vadovui.</div></div>}
+                {[...feedbacks].sort((first, second) => feedbackSort === 'newest' ? new Date(second.createdAt || second.date).getTime() - new Date(first.createdAt || first.date).getTime() : new Date(first.createdAt || first.date).getTime() - new Date(second.createdAt || second.date).getTime()).map((item) => (
+                  <div key={item.id} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="flex items-start gap-4"><span className={`h-11 w-11 shrink-0 rounded-full grid place-items-center text-sm font-bold ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.name[0]?.toUpperCase() || '?'}</span><div className="min-w-0 flex-1"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div className="flex flex-wrap items-center gap-3"><span className="font-bold text-[#202124]">{item.name}</span><span className="flex items-center text-[#f29900] text-sm gap-1">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= item.rating ? 'currentColor' : 'none'} />)} <span className="text-[#5f6368] ml-1">{item.rating}/5</span></span></div><span className="text-xs text-[#80868b]">{item.date}</span></div><div className={`inline-flex text-[11px] font-bold uppercase tracking-wide rounded-full px-2 py-1 mt-3 ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.sentToGoogle ? 'Nukreipta į Google' : 'Privati žinutė vadovui'}</div><p className="text-[#3c4043] text-sm leading-relaxed mt-3">{item.comment}</p></div></div></div>
                 ))}
               </div>
             </div>
@@ -352,6 +375,14 @@ export default function DashboardPage() {
               <h1 className="text-3xl font-extrabold text-[#202124] mb-2">Profilis ir nustatymai</h1>
               <p className="text-sm text-[#5f6368] mb-6">Tvarkykite paskyros ir įmonės informaciją.</p>
               <div className="bg-white border border-[#dadce0] rounded-2xl p-6 max-w-xl space-y-6 shadow-sm">
+                <div>
+                  <div className="block text-xs font-semibold text-[#5f6368] mb-2">Įmonės logotipas</div>
+                  <p className="text-xs text-[#80868b] mb-4">Įkelkite logotipą, kuris bus rodomas klientų vertinimo puslapyje.</p>
+                  <div className="flex items-center gap-4">
+                    <div className="h-16 w-16 rounded-xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center overflow-hidden border border-[#c6dafc]">{business.logo_url ? <img src={business.logo_url} alt="Įmonės logotipas" className="h-full w-full object-contain" /> : <Sparkles size={24} />}</div>
+                    <label className="cursor-pointer bg-[#f1f3f4] hover:bg-[#e8eaed] text-[#3c4043] px-4 py-2.5 rounded-xl text-sm font-semibold">Įkelti logotipą<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadLogo(file); event.target.value = ''; }} /></label>
+                  </div>
+                </div>
                 <div>
                   <div className="block text-xs font-semibold text-[#5f6368] mb-2">Google Review pasiūlymo slenkstis</div>
                   <p className="text-xs text-[#80868b] mb-4">Pasirinkite, nuo kiek žvaigždučių klientui rodyti Google Review pasiūlymą.</p>
