@@ -13,6 +13,15 @@ alter table public.feedbacks
   add column if not exists user_id uuid references auth.users(id) on delete cascade;
 
 alter table public.feedbacks
+  add column if not exists name text;
+
+alter table public.feedbacks
+  add column if not exists rating integer;
+
+alter table public.feedbacks
+  add column if not exists comment text;
+
+alter table public.feedbacks
   add column if not exists sent_to_google boolean not null default false;
 
 alter table public.feedbacks
@@ -54,3 +63,5 @@ on storage.objects for update
 to authenticated
 using (bucket_id = 'logos' and (storage.foldername(name))[1] = auth.uid()::text)
 with check (bucket_id = 'logos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+notify pgrst, 'reload schema';
