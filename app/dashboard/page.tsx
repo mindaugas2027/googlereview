@@ -25,6 +25,11 @@ const getTrialDaysLeft = (startedAt?: string) => {
   return Math.max(0, 14 - elapsedDays);
 };
 
+const normalizeGoogleReviewUrl = (value: string) => {
+  const trimmedValue = value.trim();
+  return /^https?:\/\//i.test(trimmedValue) ? trimmedValue : `https://${trimmedValue}`;
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -68,7 +73,7 @@ export default function DashboardPage() {
         setBusiness((currentBusiness) => ({
           ...currentBusiness,
           name: savedBusinessName || currentBusiness.name,
-          google_review_url: savedGoogleReviewUrl || currentBusiness.google_review_url,
+          google_review_url: savedGoogleReviewUrl ? normalizeGoogleReviewUrl(savedGoogleReviewUrl) : currentBusiness.google_review_url,
           google_min_rating: savedGoogleMinRating,
           logo_url: savedLogoUrl,
         }));
@@ -126,7 +131,7 @@ export default function DashboardPage() {
       return;
     }
 
-    const googleReviewUrl = business.google_review_url.trim();
+    const googleReviewUrl = normalizeGoogleReviewUrl(business.google_review_url);
     try {
       const parsedUrl = new URL(googleReviewUrl);
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error();
@@ -367,10 +372,10 @@ export default function DashboardPage() {
               <h1 className="text-3xl font-extrabold text-[#202124] mb-2">Vietos</h1>
               <p className="text-sm text-[#5f6368] mb-6">Nustatykite, kur klientai bus nukreipiami po gero įvertinimo.</p>
               <div className="bg-white border border-[#dadce0] rounded-2xl p-6 max-w-2xl shadow-sm">
-                <div className="flex items-center gap-3 mb-5"><span className="h-10 w-10 rounded-xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center"><Globe2 size={19} /></span><div><h2 className="font-bold">Google Business Profile</h2><p className="text-xs text-[#5f6368] mt-1">Pridėkite savo Google atsiliepimų nuorodą.</p></div></div>
+                <div className="flex items-center gap-3 mb-5"><span className="h-10 w-10 rounded-xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center"><Globe2 size={19} /></span><div><h2 className="font-bold">Nukreipimo nuoroda</h2><p className="text-xs text-[#5f6368] mt-1">Po gero įvertinimo klientas bus nukreiptas į šią nuorodą.</p></div></div>
                 <label className="block text-xs font-semibold text-[#5f6368] mb-2" htmlFor="google-review-url">Google Review URL</label>
                 <input id="google-review-url" type="url" placeholder="https://g.page/r/.../review" value={business.google_review_url} onChange={(e) => setBusiness({ ...business, google_review_url: e.target.value })} className="w-full bg-white border border-[#dadce0] rounded-xl p-3 text-sm text-[#202124] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]" />
-                <p className="text-xs text-[#80868b] mt-2">Šią nuorodą rasite savo Google Business Profile paskyroje.</p>
+                <p className="text-xs text-[#80868b] mt-2">Naudokite pilną viešą nuorodą, pavyzdžiui: https://jusu-svetaine.lt</p>
                 <button onClick={saveGoogleReviewUrl} className="mt-5 bg-[#1a73e8] hover:bg-[#1769d1] text-white px-4 py-2.5 rounded-xl text-sm font-semibold">Išsaugoti nuorodą</button>
                 {profileMessage && <p className="text-sm text-[#137333] mt-4">{profileMessage}</p>}
               </div>
