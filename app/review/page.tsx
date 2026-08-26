@@ -29,16 +29,6 @@ export default function ReviewPage() {
     })
   }, [businessId])
 
-  const getDestinationHostname = () => {
-    try {
-      return googleUrl ? new URL(googleUrl).hostname : ''
-    } catch {
-      return ''
-    }
-  }
-
-  const isGoogleDestination = /(^|\.)google\.[^/]+$/i.test(getDestinationHostname()) || getDestinationHostname() === 'g.page'
-
   const recordGoogleClick = async (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault()
     const { error: insertError } = await supabase.from('feedbacks').insert({
@@ -46,7 +36,7 @@ export default function ReviewPage() {
       name: name.trim() || 'Anoniminis klientas',
       rating,
       comment: 'Klientas nukreiptas į Google Review.',
-      sent_to_google: isGoogleDestination,
+      sent_to_google: true,
       created_at: new Date().toISOString(),
     })
     if (insertError) {

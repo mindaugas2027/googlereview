@@ -28,6 +28,7 @@ export default function LoginPage() {
   const router = useRouter()
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- skaitome URL parametrą po mount, kad išvengtume hydration neatitikimo
     setIsSignUp(new URLSearchParams(window.location.search).get('mode') === 'signup')
   }, [])
 
