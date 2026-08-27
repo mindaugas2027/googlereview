@@ -8,6 +8,8 @@ import { Sparkles } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
+const ADMIN_EMAIL = 'mindaugas2027@gmail.com'
+
 const withTimeout = <T,>(promise: PromiseLike<T>, milliseconds = 10000) =>
   Promise.race([
     promise,
@@ -69,7 +71,7 @@ export default function LoginPage() {
         if (error) {
           setMessage({ text: error.message, type: 'error' })
         } else {
-          router.push('/dashboard')
+          router.push(email.trim().toLowerCase() === ADMIN_EMAIL ? '/admin' : '/dashboard')
         }
       }
     } catch (error) {

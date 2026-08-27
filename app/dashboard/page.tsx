@@ -162,6 +162,12 @@ export default function DashboardPage() {
         ? new URLSearchParams(window.location.search).get('view_as')
         : null;
 
+      // Administratorius be peržiūros parametro nukreipiamas į admin panelę
+      if (!viewAsParam && session.user.email?.toLowerCase() === ADMIN_EMAIL) {
+        router.replace('/admin');
+        return;
+      }
+
       if (viewAsParam && session.user.email?.toLowerCase() === ADMIN_EMAIL) {
         const response = await fetch(`/api/admin/users/${viewAsParam}`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
