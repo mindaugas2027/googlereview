@@ -1,0 +1,15 @@
+[33m26084d4[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m fix: sutvarkytas pdf blob tipas
+[33mb607ed2[m fix: sutvarkyta 479 eilute ir pilnas dashboard kodas
+[33m5375c5f[m fix: sutvarkyta 479 eilute ir pilnas dashboard kodas
+[33m6da58af[m fix: sutvarkytas generate-pdf.ts failas
+[33m810538f[m feat: pridėtas PDF atsisiuntimo mygtukas QR kodų skiltyje
+[33m6ab5f62[m Update admin page UI and subscription management
+[33mb8bce15[m Fix admin page structure and route handling
+[33m9d3d00d[m Apjungta admin panelė į vieną puslapį su visais duomenimis
+[33mf538b06[m Atnaujintas Prisijungti mygtuko stilius
+[33m8ce727b[m Pašalintas viršutinis nemokamas mygtukas iš navigacijos
+[33m573083e[m Atnaujintas admin modalas: tik prenumerata ir kalendorius
+[33mc64efe9[m Atnaujinta admin prenumeratos logika ir kalendorius
+[33m31fdfe6[m Atnaujinta prenumeratos logika ir admin funkcijos
+[33m1126435[m Trial: switch to absolute trial_end date; admin can extend by custom days or set date
+[33m8aa8c03[m  Name exact missing env vars in admin config error
