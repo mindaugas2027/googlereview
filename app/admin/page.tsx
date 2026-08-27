@@ -32,8 +32,19 @@ export default function AdminPage() {
   const [tab, setTab] = useState<'users' | 'payments' | 'settings'>('users')
   const [error, setError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
-  const [extendDays, setExtendDays] = useState(30)
+    const [extendDays, setExtendDays] = useState(30)
   const [extendDate, setExtendDate] = useState('')
+
+  const formatDateForInput = (dateStr?: string | null) => {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    if (Number.isNaN(d.getTime())) return ''
+    // Naudojame vietinį laiką, kad atitiktų tai, ką vartotojas mato kalendoriuje
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
 
   const loadUsers = async () => {
     try {
@@ -175,9 +186,9 @@ export default function AdminPage() {
                         <span>Atsiliepimai<strong className="block text-base text-[#202124]">{user.feedback_count}</strong></span>
                         <span>Vidurkis<strong className="block text-base text-[#202124]">{user.average_rating ?? '—'}</strong></span>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                                            <div className="flex flex-wrap gap-2">
                         <button onClick={() => router.push(`/dashboard?view_as=${user.id}`)} className="border border-[#c6dafc] bg-[#e8f0fe] text-[#1967d2] hover:bg-[#dbe7fb] rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2"><ExternalLink size={15} /> Dashboard</button>
-                        <button onClick={() => setSelectedUser(user)} className="bg-[#1a73e8] text-white rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2"><Eye size={16} /> Peržiūrėti</button>
+                        <button onClick={() => { setSelectedUser(user); setExtendDate(formatDateForInput(user.trial_end)); setExtendDays(0); }} className="bg-[#1a73e8] text-white rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2"><Eye size={16} /> Peržiūrėti</button>
                       </div>
                     </div>
                   )
@@ -211,8 +222,8 @@ export default function AdminPage() {
                         <div className="text-sm text-[#5f6368]">{user.first_name} · {user.email}</div>
                       </div>
                       <span className={`text-xs font-bold rounded-full px-3 py-1.5 w-fit ${daysLeft > 0 ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fce8e6] text-[#c5221f]'}`}>{daysLeft > 0 ? `Liko ${daysLeft} d.` : 'Pasibaigusi'}</span>
-                      <div className="flex flex-wrap gap-2">
-                        <button onClick={() => runUserAction('extend_trial', user, { days: 30 })} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl px-3 py-2 text-sm font-semibold">Pratęsti 30 d.</button>
+                                            <div className="flex flex-wrap gap-2">
+                        <button onClick={() => { setSelectedUser(user); setExtendDate(formatDateForInput(user.trial_end)); setExtendDays(0); }} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl px-3 py-2 text-sm font-semibold">Pratęsti</button>
                         <button onClick={() => runUserAction('expire_trial', user)} disabled={daysLeft === 0} className="border border-[#f9df96] text-[#b06000] hover:bg-[#fef7e0] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-sm font-semibold">Nutraukti</button>
                         <button onClick={() => router.push(`/dashboard?view_as=${user.id}`)} className="border border-[#c6dafc] bg-[#e8f0fe] text-[#1967d2] hover:bg-[#dbe7fb] rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2"><ExternalLink size={15} /> Dashboard</button>
                       </div>
@@ -264,29 +275,87 @@ export default function AdminPage() {
                   ))}
                   {selectedUser.recent_feedbacks.length === 0 && <p className="text-sm text-[#5f6368]">Atsiliepimų dar nėra.</p>}
                 </div>
-                <div className="mt-7 rounded-xl border border-[#dadce0] p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="font-bold text-sm">Pratęsti prenumeratą</p>
-                    {selectedUser.trial_end && <span className="text-xs text-[#5f6368]">dabar galioja iki {new Date(selectedUser.trial_end).toLocaleDateString('lt-LT')}</span>}
+                                <div className="mt-7 rounded-xl border border-[#dadce0] p-4 bg-[#f8fafd]">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="font-bold text-sm text-[#1a73e8]">Prenumeratos valdymas</p>
+                    {selectedUser.trial_end && (
+                      <span className="text-xs bg-white px-2 py-1 rounded border border-[#dadce0] text-[#5f6368]">
+                        Dabartinė pabaiga: <strong>{new Date(selectedUser.trial_end).toLocaleDateString('lt-LT')}</strong>
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-end gap-2 mb-3">
-                    <div className="flex-1">
-                      <label className="block text-xs text-[#5f6368] mb-1">Pridėti dienų</label>
-                      <input type="number" min={1} max={3650} value={extendDays} onChange={(e) => setExtendDays(Number(e.target.value))} className="w-full bg-white border border-[#dadce0] rounded-xl p-2.5 text-sm" />
+
+                  <div className="space-y-4">
+                    <div className="bg-white p-4 rounded-xl border border-[#dadce0] shadow-sm">
+                      <label className="block text-xs font-bold text-[#5f6368] mb-2 uppercase tracking-wide">Pasirinkite galiojimo pabaigą kalendoriuje</label>
+                      <input 
+                        type="date" 
+                        value={extendDate} 
+                        onChange={(e) => {
+                          setExtendDate(e.target.value)
+                          setExtendDays(0)
+                        }} 
+                        className="w-full border border-[#dadce0] rounded-xl p-3 text-base font-medium focus:ring-2 focus:ring-[#1a73e8] outline-none transition-all" 
+                      />
+                      
+                      {extendDate && (() => {
+                        const d = new Date(`${extendDate}T23:59:59`)
+                        if (Number.isNaN(d.getTime())) return null
+                        const daysLeft = Math.max(0, Math.ceil((d.getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+                        return (
+                          <div className="mt-3 flex items-center gap-2 text-[#1a73e8] bg-[#e8f0fe] p-3 rounded-lg">
+                            <Sparkles size={16} className="shrink-0" />
+                            <span className="text-sm font-semibold">
+                              Apskaičiuota: klientui liks <span className="text-lg font-bold underline underline-offset-2">{daysLeft} d.</span> prenumeratos
+                            </span>
+                          </div>
+                        )
+                      })()}
                     </div>
-                    <button onClick={() => runUserAction('extend_trial', selectedUser, { days: extendDays || 30 })} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl px-4 py-2.5 text-sm font-semibold whitespace-nowrap">Pratęsti +{extendDays || 30} d.</button>
-                  </div>
-                  <div className="flex items-center justify-center gap-2 mb-3">
-                    {[30, 60, 90].map((d) => (
-                      <button key={d} onClick={() => setExtendDays(d)} className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${extendDays === d ? 'bg-[#e8f0fe] text-[#1967d2]' : 'bg-[#f1f3f4] text-[#3c4043]'}`}>{d} d.</button>
-                    ))}
-                  </div>
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <label className="block text-xs text-[#5f6368] mb-1">…arba galioja iki datos (YYYY-MM-DD)</label>
-                      <input type="date" value={extendDate} onChange={(e) => setExtendDate(e.target.value)} className="w-full bg-white border border-[#dadce0] rounded-xl p-2.5 text-sm" />
+
+                    <div className="flex items-center gap-3">
+                      <div className="h-px bg-[#dadce0] flex-1" />
+                      <span className="text-[10px] font-bold text-[#9aa0a6] uppercase">arba</span>
+                      <div className="h-px bg-[#dadce0] flex-1" />
                     </div>
-                    <button onClick={() => extendDate && runUserAction('extend_trial', selectedUser, { endDate: extendDate })} disabled={!extendDate} className="border border-[#c6dafc] bg-[#e8f0fe] text-[#1967d2] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-4 py-2.5 text-sm font-semibold whitespace-nowrap">Nustatyti iki datos</button>
+
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <label className="block text-xs text-[#5f6368] mb-1 font-medium">Pridėti papildomų dienų skaičių</label>
+                        <input 
+                          type="number" 
+                          min={1} 
+                          max={3650} 
+                          value={extendDays || ''} 
+                          onChange={(e) => { 
+                            const val = Number(e.target.value)
+                            setExtendDays(val)
+                            if (val > 0) setExtendDate('') 
+                          }} 
+                          placeholder="pvz. 30"
+                          className="w-full bg-white border border-[#dadce0] rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-[#1a73e8] outline-none" 
+                        />
+                      </div>
+                      <div className="flex gap-1">
+                        {[30, 90, 365].map((d) => (
+                          <button 
+                            key={d} 
+                            onClick={() => { setExtendDays(d); setExtendDate(''); }} 
+                            className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-colors ${extendDays === d && !extendDate ? 'bg-[#1a73e8] text-white' : 'bg-white border border-[#dadce0] text-[#3c4043] hover:bg-[#f1f3f4]'}`}
+                          >
+                            +{d} d.
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={() => runUserAction('extend_trial', selectedUser, extendDate ? { endDate: extendDate } : { days: extendDays || 30 })} 
+                      disabled={!extendDate && !extendDays}
+                      className="w-full bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.98]"
+                    >
+                      Išsaugoti pakeitimus
+                    </button>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-3 mt-4">
