@@ -17,7 +17,7 @@ export default function Home() {
         <div className="flex items-center">
           <Link 
             href="/login"
-            className="text-sm font-medium text-[#5f6368] hover:text-[#1a73e8] transition"
+            className="border border-[#dadce0] bg-white hover:bg-[#f1f3f4] text-[#3c4043] font-semibold px-4 py-2 rounded-xl text-sm transition shadow-sm"
           >
             Prisijungti
           </Link>
