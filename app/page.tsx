@@ -14,18 +14,12 @@ export default function Home() {
             <span className="text-[#1a73e8]">Get</span>review
           </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center">
           <Link 
             href="/login"
             className="text-sm font-medium text-[#5f6368] hover:text-[#1a73e8] transition"
           >
             Prisijungti
-          </Link>
-          <Link
-            href="/login?mode=signup"
-            className="bg-[#1a73e8] hover:bg-[#1769d1] text-white px-4 py-2 rounded-xl text-sm font-semibold transition"
-          >
-            Išbandyti nemokamai
           </Link>
         </div>
       </header>
