@@ -52,7 +52,6 @@ type DashboardPageId = 'overview' | 'feedback' | 'qr' | 'analytics' | 'locations
 
 const DASHBOARD_NAV_ITEMS: Array<{ id: DashboardPageId; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'overview', label: 'Apžvalga', icon: LayoutDashboard },
-  { id: 'feedback', label: 'Atsiliepimai', icon: MessageSquare },
   { id: 'qr', label: 'QR Kodai', icon: QrCode },
   { id: 'analytics', label: 'Analitika', icon: BarChart3 },
   { id: 'locations', label: 'Vietos', icon: MapPin },
@@ -429,10 +428,10 @@ export default function DashboardPage() {
         setProfileMessage(result.error.message);
         return;
       }
-      setUser((currentUser) => currentUser
+            setUser((currentUser) => currentUser
         ? { ...currentUser, user_metadata: { ...currentUser.user_metadata, trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), trial_days: 14 } }
         : currentUser);
-      setPage('overview');
+      setPage('billing');
       setProfileMessage('Prenumerata pratęsta 14 dienų.');
       return;
     }
@@ -444,8 +443,8 @@ export default function DashboardPage() {
       setProfileMessage(error.message);
       return;
     }
-    if (data.user) setUser(data.user);
-    setPage('overview');
+        if (data.user) setUser(data.user);
+    setPage('billing');
     setProfileMessage('Prenumerata pratęsta 14 dienų.');
   };
 
@@ -490,17 +489,18 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <nav className="space-y-1">
-            {DASHBOARD_NAV_ITEMS.map(item => (
-              <button 
-                key={item.id} 
-                onClick={() => { if (!subscriptionExpired || item.id === 'billing') { setPage(item.id); setMobileMenu(false); } }}
-                disabled={subscriptionExpired && item.id !== 'billing'}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${page === item.id ? 'bg-[#1a73e8] text-white' : subscriptionExpired && item.id !== 'billing' ? 'text-[#bdc1c6] cursor-not-allowed' : 'text-[#5f6368] hover:text-[#1a73e8] hover:bg-[#f1f3f4]'}`}
-              >
-                <item.icon size={18} /> {item.label}
-              </button>
-            ))}
+                    <nav className="space-y-1">
+            {DASHBOARD_NAV_ITEMS
+              .filter(item => !subscriptionExpired || item.id === 'billing')
+              .map(item => (
+                <button 
+                  key={item.id} 
+                  onClick={() => { setPage(item.id); setMobileMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${page === item.id ? 'bg-[#1a73e8] text-white' : 'text-[#5f6368] hover:text-[#1a73e8] hover:bg-[#f1f3f4]'}`}
+                >
+                  <item.icon size={18} /> {item.label}
+                </button>
+              ))}
           </nav>
         </div>
 
@@ -537,11 +537,11 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {subscriptionExpired && page !== 'billing' && (
+                    {subscriptionExpired && page !== 'billing' && (
             <div className="max-w-2xl mx-auto mt-10 bg-white border border-[#f5b7b1] rounded-2xl p-8 text-center shadow-sm">
               <span className="h-14 w-14 rounded-2xl bg-[#fce8e6] text-[#c5221f] grid place-items-center mx-auto mb-5"><Zap size={25} /></span>
-              <h1 className="text-2xl font-extrabold mb-3">Apgailestaujame, prenumerata baigėsi</h1>
-              <p className="text-sm text-[#5f6368] leading-relaxed max-w-md mx-auto">Norėdami toliau naudotis analitika, atsiliepimais ir kitomis funkcijomis, pratęskite prenumeratą mokėjimų skiltyje.</p>
+              <h1 className="text-2xl font-extrabold mb-3">Prenumerata baigėsi</h1>
+              <p className="text-sm text-[#5f6368] leading-relaxed max-w-md mx-auto">Pratęskite prenumeratą mokėjimų skiltyje, kad galėtumėte toliau naudotis sistema.</p>
               <button onClick={() => setPage('billing')} className="mt-6 bg-[#1a73e8] hover:bg-[#1769d1] text-white px-5 py-2.5 rounded-xl text-sm font-semibold">Pratęsti prenumeratą</button>
             </div>
           )}
@@ -618,8 +618,7 @@ export default function DashboardPage() {
                 <div className="bg-[#202124] rounded-2xl p-6 text-white shadow-sm"><div className="flex items-center justify-between mb-5"><div><p className="text-xs uppercase tracking-wider text-[#9aa0a6]">ŠIO MĖNESIO TIKSLAS</p><h2 className="font-bold text-lg mt-1">Gauti {monthlyGoal} atsiliepimų</h2></div><span className="text-[#81c995] text-sm font-bold">{monthlyGoalProgress}%</span></div><div className="h-2 bg-[#5f6368] rounded-full overflow-hidden mb-3"><div className="h-full bg-[#81c995] rounded-full" style={{ width: `${monthlyGoalProgress}%` }} /></div><p className="text-sm text-[#bdc1c6]">{monthlyFeedbacks} iš {monthlyGoal} šio mėnesio atsiliepimų</p><button onClick={shareReviewLink} className="mt-6 w-full bg-white text-[#202124] hover:bg-[#f1f3f4] rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2"><Send size={16} /> Dalintis QR nuoroda</button></div>
               </div>
 
-              <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-5">
-                <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><div className="flex items-center justify-between mb-5"><div><h2 className="font-bold text-lg">Naujausi atsiliepimai</h2><p className="text-sm text-[#5f6368] mt-1">Tikri klientų įrašai iš QR srauto</p></div><button onClick={() => setPage('feedback')} className="text-xs font-semibold text-[#1a73e8]">Peržiūrėti visus</button></div><div className="space-y-4">{feedbacks.slice(0, 3).map((item) => <div key={item.id} className="flex gap-3"><span className={`h-9 w-9 rounded-full grid place-items-center text-sm font-bold ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.name[0]?.toUpperCase() || '?'}</span><div className="flex-1"><div className="flex justify-between gap-3"><span className="font-semibold text-sm">{item.name}</span><span className="text-xs text-[#80868b]">{item.date}</span></div><div className="flex items-center gap-1 text-[#f29900] text-xs mt-1">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={13} fill={star <= item.rating ? 'currentColor' : 'none'} />)}</div><p className="text-sm text-[#3c4043] mt-1 line-clamp-2">{item.comment}</p></div></div>)}{feedbacks.length === 0 && <p className="text-sm text-[#80868b]">Atsiliepimų dar nėra.</p>}</div></div>
+                            <div className="grid lg:grid-cols-1 gap-5">
                 <div className="bg-[#e8f0fe] border border-[#c6dafc] rounded-2xl p-6"><span className="h-10 w-10 rounded-xl bg-white text-[#1a73e8] grid place-items-center mb-5"><Sparkles size={19} /></span><h2 className="font-bold text-lg mb-2">Jūsų reputacija auga</h2><p className="text-sm text-[#3c4043] leading-relaxed">Šį mėnesį klientai dažniau renkasi jus dėl aukšto įvertinimo. Tęskite QR kampaniją, kad išlaikytumėte tempą.</p><button onClick={() => setPage('analytics')} className="mt-5 text-sm font-bold text-[#1a73e8] flex items-center gap-1">Sužinoti daugiau <ArrowUpRight size={15} /></button></div>
               </div>
             </>
