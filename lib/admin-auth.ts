@@ -17,10 +17,13 @@ export async function requireAdmin(request: Request): Promise<AdminGuard> {
     || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
 
   if (!url || !serviceKey) {
+    const missing: string[] = []
+    if (!url) missing.push('NEXT_PUBLIC_SUPABASE_URL')
+    if (!serviceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY')
     return {
       ok: false,
       status: 500,
-      error: 'Serverio konfigūracija nepilna: trūksta NEXT_PUBLIC_SUPABASE_URL arba SUPABASE_SERVICE_ROLE_KEY aplinkos kintamųjų.',
+      error: `Serverio konfigūracija nepilna — hostingo aplinkoje nerasta šių aplinkos kintamųjų: ${missing.join(', ')}. Pridėkite juos hostingo nustatymuose (Vercel: Settings → Environment Variables) ir atlikite Redeploy.`,
     }
   }
 
