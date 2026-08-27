@@ -248,36 +248,34 @@ export default function AdminPage() {
           </div>
         )}
 
-        {selectedUser && (
+                {selectedUser && (
           <div className="fixed inset-0 z-50 bg-[#202124]/40 grid place-items-center p-5">
             <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[85vh] overflow-auto">
               <div className="p-6 border-b border-[#dadce0] flex items-start justify-between">
                 <div>
-                  <p className="text-xs text-[#5f6368] uppercase font-bold">Kliento peržiūra</p>
+                  <p className="text-xs text-[#5f6368] uppercase font-bold">Prenumeratos valdymas</p>
                   <h2 className="text-2xl font-extrabold mt-1">{selectedUser.company_name}</h2>
                   <p className="text-sm text-[#5f6368] mt-1">{selectedUser.first_name} · {selectedUser.email}</p>
                 </div>
                 <button onClick={() => setSelectedUser(null)}><X /></button>
               </div>
               <div className="p-6">
-                <div className="grid sm:grid-cols-3 gap-3 mb-6">
-                  <div className="bg-[#f8fafd] rounded-xl p-4"><span className="text-xs text-[#5f6368]">QR nuskaitymai</span><strong className="block text-2xl mt-1">{selectedUser.qr_scans}</strong></div>
-                  <div className="bg-[#f8fafd] rounded-xl p-4"><span className="text-xs text-[#5f6368]">Atsiliepimai</span><strong className="block text-2xl mt-1">{selectedUser.feedback_count}</strong></div>
-                  <div className="bg-[#f8fafd] rounded-xl p-4"><span className="text-xs text-[#5f6368]">Google</span><strong className="block text-2xl mt-1">{selectedUser.google_redirects}</strong></div>
+                <div className="grid sm:grid-cols-2 gap-3 mb-6">
+                  <div className="bg-[#f8fafd] rounded-xl p-4">
+                    <span className="text-xs text-[#5f6368]">Prenumeratos būsena</span>
+                    <strong className={`block text-xl mt-1 ${getTrialDaysLeft(selectedUser) > 0 ? 'text-[#137333]' : 'text-[#c5221f]'}`}>
+                      {getTrialDaysLeft(selectedUser) > 0 ? `Aktyvi (liko ${getTrialDaysLeft(selectedUser)} d.)` : 'Pasibaigusi'}
+                    </strong>
+                  </div>
+                  <div className="bg-[#f8fafd] rounded-xl p-4">
+                    <span className="text-xs text-[#5f6368]">Užsiregistravo</span>
+                    <strong className="block text-xl mt-1">{new Date(selectedUser.created_at).toLocaleDateString('lt-LT')}</strong>
+                  </div>
                 </div>
-                <h3 className="font-bold mb-3">Naujausi atsiliepimai</h3>
-                <div className="space-y-3">
-                  {selectedUser.recent_feedbacks.map((feedback, index) => (
-                    <div key={`${feedback.created_at}-${index}`} className="border border-[#dadce0] rounded-xl p-4">
-                      <div className="flex justify-between gap-3"><strong className="text-sm">{feedback.name}</strong><span className="text-[#f29900]">{'★'.repeat(feedback.rating)}</span></div>
-                      <p className="text-sm text-[#3c4043] mt-2">{feedback.comment}</p>
-                    </div>
-                  ))}
-                  {selectedUser.recent_feedbacks.length === 0 && <p className="text-sm text-[#5f6368]">Atsiliepimų dar nėra.</p>}
-                </div>
-                                <div className="mt-7 rounded-xl border border-[#dadce0] p-4 bg-[#f8fafd]">
+
+                <div className="rounded-xl border border-[#dadce0] p-4 bg-[#f8fafd]">
                   <div className="flex items-center justify-between mb-4">
-                    <p className="font-bold text-sm text-[#1a73e8]">Prenumeratos valdymas</p>
+                    <p className="font-bold text-sm text-[#1a73e8]">Keisti galiojimo laiką</p>
                     {selectedUser.trial_end && (
                       <span className="text-xs bg-white px-2 py-1 rounded border border-[#dadce0] text-[#5f6368]">
                         Dabartinė pabaiga: <strong>{new Date(selectedUser.trial_end).toLocaleDateString('lt-LT')}</strong>
@@ -287,7 +285,7 @@ export default function AdminPage() {
 
                   <div className="space-y-4">
                     <div className="bg-white p-4 rounded-xl border border-[#dadce0] shadow-sm">
-                      <label className="block text-xs font-bold text-[#5f6368] mb-2 uppercase tracking-wide">Pasirinkite galiojimo pabaigą kalendoriuje</label>
+                      <label className="block text-xs font-bold text-[#5f6368] mb-2 uppercase tracking-wide">Pasirinkite pabaigos datą</label>
                       <input 
                         type="date" 
                         value={extendDate} 
@@ -297,20 +295,6 @@ export default function AdminPage() {
                         }} 
                         className="w-full border border-[#dadce0] rounded-xl p-3 text-base font-medium focus:ring-2 focus:ring-[#1a73e8] outline-none transition-all" 
                       />
-                      
-                      {extendDate && (() => {
-                        const d = new Date(`${extendDate}T23:59:59`)
-                        if (Number.isNaN(d.getTime())) return null
-                        const daysLeft = Math.max(0, Math.ceil((d.getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
-                        return (
-                          <div className="mt-3 flex items-center gap-2 text-[#1a73e8] bg-[#e8f0fe] p-3 rounded-lg">
-                            <Sparkles size={16} className="shrink-0" />
-                            <span className="text-sm font-semibold">
-                              Apskaičiuota: klientui liks <span className="text-lg font-bold underline underline-offset-2">{daysLeft} d.</span> prenumeratos
-                            </span>
-                          </div>
-                        )
-                      })()}
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -321,7 +305,7 @@ export default function AdminPage() {
 
                     <div className="flex items-end gap-2">
                       <div className="flex-1">
-                        <label className="block text-xs text-[#5f6368] mb-1 font-medium">Pridėti papildomų dienų skaičių</label>
+                        <label className="block text-xs text-[#5f6368] mb-1 font-medium">Pridėti dienų</label>
                         <input 
                           type="number" 
                           min={1} 
@@ -352,16 +336,16 @@ export default function AdminPage() {
                     <button 
                       onClick={() => runUserAction('extend_trial', selectedUser, extendDate ? { endDate: extendDate } : { days: extendDays || 30 })} 
                       disabled={!extendDate && !extendDays}
-                      className="w-full bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.98]"
+                      className="w-full bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl px-4 py-3 text-sm font-bold shadow-md transition-all active:scale-[0.98]"
                     >
-                      Išsaugoti pakeitimus
+                      Išsaugoti prenumeratą
                     </button>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-3 mt-4">
-                  <button onClick={() => router.push(`/dashboard?view_as=${selectedUser.id}`)} className="bg-[#202124] text-white rounded-xl px-4 py-2.5 text-sm font-semibold flex items-center gap-2"><ExternalLink size={16} /> Peržiūrėti kliento dashboard</button>
-                  <button onClick={() => runUserAction('expire_trial', selectedUser)} className="border border-[#f9df96] text-[#b06000] hover:bg-[#fef7e0] rounded-xl px-4 py-2.5 text-sm font-semibold">Nutraukti prenumeratą</button>
-                  <button onClick={() => runUserAction('delete_user', selectedUser)} className="border border-[#f5b7b1] text-[#c5221f] rounded-xl px-4 py-2.5 text-sm font-semibold">Ištrinti vartotoją</button>
+
+                <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-[#dadce0]">
+                  <button onClick={() => runUserAction('expire_trial', selectedUser)} className="flex-1 border border-[#f9df96] text-[#b06000] hover:bg-[#fef7e0] rounded-xl px-4 py-2.5 text-sm font-semibold">Nutraukti dabar</button>
+                  <button onClick={() => runUserAction('delete_user', selectedUser)} className="flex-1 border border-[#f5b7b1] text-[#c5221f] hover:bg-[#fce8e6] rounded-xl px-4 py-2.5 text-sm font-semibold">Ištrinti paskyrą</button>
                 </div>
               </div>
             </div>
