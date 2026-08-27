@@ -1,29 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const ADMIN_EMAIL = 'mindaugas2027@gmail.com'
-
-const getAdminClient = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || '',
-  { auth: { autoRefreshToken: false, persistSession: false } },
-)
-
-const requireAdmin = async (request: NextRequest) => {
-  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-  if (!token) return null
-  const adminClient = getAdminClient()
-  const { data: { user } } = await adminClient.auth.getUser(token)
-  if (!user || user.email?.toLowerCase() !== ADMIN_EMAIL) return null
-  return adminClient
-}
+import { requireAdmin } from '@/lib/admin-auth'
 
 type RouteContext = { params: Promise<{ userId: string }> }
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const adminClient = await requireAdmin(request)
-  if (!adminClient) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { userId } = await context.params
+  const guard = await requireAdmin(request)
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
+  const adminClient = guard.client
+
+  try {
+    const { userId } = await context.params
 
   const { data: target, error: userError } = await adminClient.auth.admin.getUserById(userId)
   if (userError || !target.user) return NextResponse.json({ error: userError?.message || 'User not found' }, { status: 404 })
@@ -44,12 +30,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
     feedbacks: feedbackResult.data || [],
     qr_scans: (scanResult.data || []).map((scan) => scan.created_at),
   })
+  } catch (cause) {
+    console.error('[api/admin/users/[userId]] GET nepavyko:', cause)
+    return NextResponse.json({ error: 'Netikėta serverio klaida.' }, { status: 500 })
+  }
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const adminClient = await requireAdmin(request)
-  if (!adminClient) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { userId } = await context.params
+  const guard = await requireAdmin(request)
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
+  const adminClient = guard.client
+
+  try {
+    const { userId } = await context.params
   const body = await request.json() as {
     action?: 'update_metadata' | 'delete_feedbacks' | 'renew_trial' | 'expire_trial' | 'change_password'
     metadata?: Record<string, unknown>
@@ -109,12 +102,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     default:
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
   }
+  } catch (cause) {
+    console.error('[api/admin/users/[userId]] PATCH nepavyko:', cause)
+    return NextResponse.json({ error: 'Netikėta serverio klaida.' }, { status: 500 })
+  }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const adminClient = await requireAdmin(request)
-  if (!adminClient) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { userId } = await context.params
+  const guard = await requireAdmin(request)
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
+  const adminClient = guard.client
+
+  try {
+    const { userId } = await context.params
 
   const formData = await request.formData()
   const file = formData.get('file')
@@ -136,4 +136,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (metaError) return NextResponse.json({ error: metaError.message }, { status: 500 })
 
   return NextResponse.json({ ok: true, logo_url: data.publicUrl })
+  } catch (cause) {
+    console.error('[api/admin/users/[userId]] POST nepavyko:', cause)
+    return NextResponse.json({ error: 'Netikėta serverio klaida.' }, { status: 500 })
+  }
+
 }

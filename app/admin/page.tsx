@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { ADMIN_EMAIL } from '@/lib/admin-auth'
 import { CreditCard, Eye, ExternalLink, Loader2, LogOut, Search, Settings, Sparkles, Users, X } from 'lucide-react'
-
-const ADMIN_EMAIL = 'mindaugas2027@gmail.com'
 type AdminUser = {
   id: string
   email?: string
@@ -39,31 +38,53 @@ export default function AdminPage() {
   const [actionMessage, setActionMessage] = useState('')
 
   const loadUsers = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session || session.user.email?.toLowerCase() !== ADMIN_EMAIL) { router.replace('/login'); return }
-    const response = await fetch('/api/admin/users', { headers: { Authorization: `Bearer ${session.access_token}` } })
-    const payload = await response.json()
-    if (!response.ok) { setError(payload.error || 'Vartotojų įkelti nepavyko.'); setLoading(false); return }
-    setUsers(payload.users)
-    setLoading(false)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session || session.user.email?.toLowerCase() !== ADMIN_EMAIL) { router.replace('/login'); return }
+      const response = await fetch('/api/admin/users', { headers: { Authorization: `Bearer ${session.access_token}` } })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !Array.isArray(payload?.users)) {
+        setError(payload?.error || `Serverio klaida (${response.status}). Patikrinkite, ar aplinkoje nustatytas SUPABASE_SERVICE_ROLE_KEY.`)
+        return
+      }
+      setUsers(payload.users)
+    } catch {
+      setError('Nepavyko pasiekti serverio. Patikrinkite interneto ryšį.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- pradinis vartotojų sąrašo įkėlimas prisijungus
   useEffect(() => { loadUsers() }, [])
+
+  // Saugos laikmatis: jei duomenys neatsako per 20 s, rodome klaidą vietoj amžino sukimosi ratuko
+  useEffect(() => {
+    if (!loading) return
+    const timer = setTimeout(() => {
+      setError((current) => current || 'Įkeliama užtruko per ilgai. Serveryje gali trūkti SUPABASE_SERVICE_ROLE_KEY aplinkos kintamojo.')
+      setLoading(false)
+    }, 20000)
+    return () => clearTimeout(timer)
+  }, [loading])
 
   const filteredUsers = useMemo(() => users.filter((user) => `${user.company_name} ${user.first_name} ${user.email}`.toLowerCase().includes(query.toLowerCase())), [users, query])
 
   const runUserAction = async (action: 'extend_trial' | 'expire_trial' | 'delete_user', user: AdminUser) => {
     if (action === 'delete_user' && !window.confirm(`Ar tikrai norite ištrinti ${user.company_name} paskyrą?`)) return
     if (action === 'expire_trial' && !window.confirm(`Ar tikrai norite nutraukti ${user.company_name} prenumeratą? Klientas praras prieigą prie valdymo panelės.`)) return
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-    const response = await fetch('/api/admin/users', { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, action, days: 14 }) })
-    const payload = await response.json()
-    if (!response.ok) { setError(payload.error || 'Veiksmas nepavyko.'); return }
-    setActionMessage(action === 'delete_user' ? 'Vartotojas ištrintas.' : action === 'expire_trial' ? `${user.company_name} prenumerata nutraukta.` : `${user.company_name} prenumerata pratęsta 14 dienų.`)
-    setSelectedUser(null)
-    await loadUsers()
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const response = await fetch('/api/admin/users', { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, action, days: 14 }) })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) { setError(payload?.error || `Veiksmas nepavyko (${response.status}).`); return }
+      setActionMessage(action === 'delete_user' ? 'Vartotojas ištrintas.' : action === 'expire_trial' ? `${user.company_name} prenumerata nutraukta.` : `${user.company_name} prenumerata pratęsta 14 dienų.`)
+      setSelectedUser(null)
+      await loadUsers()
+    } catch {
+      setError('Nepavyko pasiekti serverio. Patikrinkite interneto ryšį.')
+    }
   }
 
   if (loading) return <div className="min-h-screen bg-[#f8fafd] grid place-items-center"><Loader2 className="animate-spin text-[#1a73e8]" /></div>
