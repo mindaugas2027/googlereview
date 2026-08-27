@@ -42,6 +42,7 @@ type DashboardUser = {
     instagram_url?: string;
     linkedin_url?: string;
     trial_started_at?: string;
+    trial_end?: string;
     trial_days?: number;
     [key: string]: unknown;
   };
@@ -59,10 +60,16 @@ const DASHBOARD_NAV_ITEMS: Array<{ id: DashboardPageId; label: string; icon: typ
   { id: 'billing', label: 'Mokėjimai', icon: Zap },
 ];
 
-const getTrialDaysLeft = (startedAt?: string) => {
-  if (!startedAt) return 14;
-  const elapsedDays = Math.floor((Date.now() - new Date(startedAt).getTime()) / (1000 * 60 * 60 * 24));
-  return Math.max(0, 14 - elapsedDays);
+const getTrialDaysLeft = (meta?: { trial_end?: string; trial_started_at?: string; trial_days?: number }) => {
+  if (!meta) return 14;
+  const DAY = 24 * 60 * 60 * 1000;
+  if (meta.trial_end) {
+    const end = new Date(meta.trial_end).getTime();
+    if (!Number.isNaN(end)) return Math.max(0, Math.ceil((end - Date.now()) / DAY));
+  }
+  const start = meta.trial_started_at ? new Date(meta.trial_started_at).getTime() : Date.now();
+  const days = Number(meta.trial_days) || 14;
+  return Math.max(0, Math.ceil((start + days * DAY - Date.now()) / DAY));
 };
 
 const normalizeGoogleReviewUrl = (value: string) => {
@@ -140,7 +147,7 @@ export default function DashboardPage() {
   });
   const feedbackChartMax = Math.max(...feedbacksByWeek, 1);
 
-  const trialDaysLeft = getTrialDaysLeft(user?.user_metadata?.trial_started_at);
+  const trialDaysLeft = getTrialDaysLeft(user?.user_metadata);
   const subscriptionExpired = trialDaysLeft === 0;
   const trialTone = trialDaysLeft >= 8
     ? { text: '#137333', background: '#e6f4ea', border: '#b7dfc1' }
@@ -423,16 +430,15 @@ export default function DashboardPage() {
         return;
       }
       setUser((currentUser) => currentUser
-        ? { ...currentUser, user_metadata: { ...currentUser.user_metadata, trial_started_at: new Date().toISOString(), trial_days: 14 } }
+        ? { ...currentUser, user_metadata: { ...currentUser.user_metadata, trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), trial_days: 14 } }
         : currentUser);
       setPage('overview');
       setProfileMessage('Prenumerata pratęsta 14 dienų.');
       return;
     }
     if (!user) return;
-    const renewedAt = new Date().toISOString();
     const { data, error } = await supabase.auth.updateUser({
-      data: { trial_started_at: renewedAt },
+      data: { trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() },
     });
     if (error) {
       setProfileMessage(error.message);

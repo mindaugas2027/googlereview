@@ -2,6 +2,32 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 export const ADMIN_EMAIL = 'mindaugas2027@gmail.com'
 
+export const DAY_MS = 24 * 60 * 60 * 1000
+
+type TrialMeta = {
+  trial_end?: string | null
+  trial_started_at?: string | null
+  trial_days?: number | null
+}
+
+/** Grąžina prenumeratos pabaigos laiko žymę (ms). Naudoja trial_end, o jei ne — trial_started_at + trial_days. */
+export function getTrialEndMs(meta: TrialMeta | null | undefined): number {
+  if (!meta) return Date.now()
+  if (meta.trial_end) {
+    const t = new Date(meta.trial_end).getTime()
+    if (!Number.isNaN(t)) return t
+  }
+  const start = meta.trial_started_at ? new Date(meta.trial_started_at).getTime() : Date.now()
+  const days = Number(meta.trial_days) || 14
+  return start + days * DAY_MS
+}
+
+/** Grąžina likusį dienų skaičių iki prenumeratos pabaigos (0 = pasibaigusi). */
+export function getTrialDaysLeft(meta: TrialMeta | null | undefined): number {
+  return Math.max(0, Math.ceil((getTrialEndMs(meta) - Date.now()) / DAY_MS))
+}
+
+
 export type AdminGuard =
   | { ok: true; client: SupabaseClient }
   | { ok: false; status: number; error: string }

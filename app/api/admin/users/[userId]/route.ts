@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin } from '@/lib/admin-auth'
+import { requireAdmin, DAY_MS } from '@/lib/admin-auth'
 
 type RouteContext = { params: Promise<{ userId: string }> }
 
@@ -79,15 +79,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     case 'renew_trial': {
       const days = Math.max(1, Math.min(3650, body.days || 14))
       const { data, error } = await adminClient.auth.admin.updateUserById(userId, {
-        user_metadata: { ...(target.user.user_metadata || {}), trial_started_at: new Date().toISOString(), trial_days: days },
+        user_metadata: { ...(target.user.user_metadata || {}), trial_end: new Date(Date.now() + days * DAY_MS).toISOString(), trial_started_at: new Date().toISOString(), trial_days: days },
       })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ ok: true, user_metadata: data.user?.user_metadata })
     }
     case 'expire_trial': {
-      const expiredAt = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
+      const expiredAt = new Date(Date.now() - 15 * DAY_MS).toISOString()
       const { data, error } = await adminClient.auth.admin.updateUserById(userId, {
-        user_metadata: { ...(target.user.user_metadata || {}), trial_started_at: expiredAt },
+        user_metadata: { ...(target.user.user_metadata || {}), trial_end: expiredAt, trial_started_at: expiredAt },
       })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ ok: true, user_metadata: data.user?.user_metadata })

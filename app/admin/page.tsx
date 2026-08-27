@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { ADMIN_EMAIL } from '@/lib/admin-auth'
+import { ADMIN_EMAIL, getTrialDaysLeft } from '@/lib/admin-auth'
 import { CreditCard, Eye, ExternalLink, Loader2, LogOut, Search, Settings, Sparkles, Users, X } from 'lucide-react'
 type AdminUser = {
   id: string
@@ -13,18 +13,14 @@ type AdminUser = {
   created_at: string
   last_sign_in_at?: string
   trial_started_at?: string | null
+  trial_end?: string | null
+  trial_days?: number | null
   monthly_goal?: number
   feedback_count: number
   google_redirects: number
   qr_scans: number
   average_rating: number | null
   recent_feedbacks: Array<{ name: string; rating: number; comment: string; created_at: string }>
-}
-
-const getTrialDaysLeft = (startedAt?: string | null) => {
-  if (!startedAt) return 14
-  const elapsedDays = Math.floor((Date.now() - new Date(startedAt).getTime()) / (1000 * 60 * 60 * 24))
-  return Math.max(0, 14 - elapsedDays)
 }
 
 export default function AdminPage() {
@@ -36,6 +32,8 @@ export default function AdminPage() {
   const [tab, setTab] = useState<'users' | 'payments' | 'settings'>('users')
   const [error, setError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
+  const [extendDays, setExtendDays] = useState(30)
+  const [extendDate, setExtendDate] = useState('')
 
   const loadUsers = async () => {
     try {
@@ -70,17 +68,36 @@ export default function AdminPage() {
 
   const filteredUsers = useMemo(() => users.filter((user) => `${user.company_name} ${user.first_name} ${user.email}`.toLowerCase().includes(query.toLowerCase())), [users, query])
 
-  const runUserAction = async (action: 'extend_trial' | 'expire_trial' | 'delete_user', user: AdminUser) => {
+  const runUserAction = async (action: 'extend_trial' | 'expire_trial' | 'delete_user', user: AdminUser, opts?: { days?: number; endDate?: string }) => {
     if (action === 'delete_user' && !window.confirm(`Ar tikrai norite ištrinti ${user.company_name} paskyrą?`)) return
     if (action === 'expire_trial' && !window.confirm(`Ar tikrai norite nutraukti ${user.company_name} prenumeratą? Klientas praras prieigą prie valdymo panelės.`)) return
+    if (action === 'extend_trial' && opts?.endDate && !window.confirm(`Ar pratęsti ${user.company_name} prenumeratą iki ${opts.endDate}?`)) return
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
-      const response = await fetch('/api/admin/users', { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, action, days: 14 }) })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) { setError(payload?.error || `Veiksmas nepavyko (${response.status}).`); return }
-      setActionMessage(action === 'delete_user' ? 'Vartotojas ištrintas.' : action === 'expire_trial' ? `${user.company_name} prenumerata nutraukta.` : `${user.company_name} prenumerata pratęsta 14 dienų.`)
+      const payload = JSON.stringify({
+        userId: user.id,
+        action,
+        days: action === 'extend_trial' ? (opts?.days ?? 30) : 30,
+        ...(action === 'extend_trial' && opts?.endDate ? { endDate: opts.endDate } : {}),
+      })
+      const response = await fetch('/api/admin/users', { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: payload })
+      const res = await response.json().catch(() => null)
+      if (!response.ok) { setError(res?.error || `Veiksmas nepavyko (${response.status}).`); return }
+      if (action === 'extend_trial') {
+        const targetDate = opts?.endDate
+          ? new Date(`${opts.endDate}T23:59:59`).toLocaleDateString('lt-LT')
+          // eslint-disable-next-line react-hooks/purity -- event handler'yje apskaičiuojam parodyti datą vartotojui
+          : new Date(Date.now() + (opts?.days ?? 30) * 24 * 60 * 60 * 1000).toLocaleDateString('lt-LT')
+        setActionMessage(`${user.company_name} prenumerata pratęsta iki ${targetDate}.`)
+      } else if (action === 'expire_trial') {
+        setActionMessage(`${user.company_name} prenumerata nutraukta.`)
+      } else {
+        setActionMessage('Vartotojas ištrintas.')
+      }
       setSelectedUser(null)
+      setExtendDays(30)
+      setExtendDate('')
       await loadUsers()
     } catch {
       setError('Nepavyko pasiekti serverio. Patikrinkite interneto ryšį.')
@@ -144,7 +161,7 @@ export default function AdminPage() {
               </div>
               <div className="divide-y divide-[#dadce0]">
                 {filteredUsers.map((user) => {
-                  const daysLeft = getTrialDaysLeft(user.trial_started_at)
+                  const daysLeft = getTrialDaysLeft(user)
                   return (
                     <div key={user.id} className="p-5 flex flex-col lg:flex-row lg:items-center gap-4">
                       <span className="h-10 w-10 rounded-xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center font-bold">{user.first_name[0] || user.company_name[0]}</span>
@@ -174,8 +191,8 @@ export default function AdminPage() {
         {tab === 'payments' && (
           <>
             <div className="grid sm:grid-cols-3 gap-4 mb-6">
-              <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Aktyvios prenumeratos</p><strong className="text-3xl block mt-2">{users.filter((user) => getTrialDaysLeft(user.trial_started_at) > 0).length}</strong></div>
-              <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Pasibaigusios prenumeratos</p><strong className="text-3xl block mt-2">{users.filter((user) => getTrialDaysLeft(user.trial_started_at) === 0).length}</strong></div>
+              <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Aktyvios prenumeratos</p><strong className="text-3xl block mt-2">{users.filter((user) => getTrialDaysLeft(user) > 0).length}</strong></div>
+              <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Pasibaigusios prenumeratos</p><strong className="text-3xl block mt-2">{users.filter((user) => getTrialDaysLeft(user) === 0).length}</strong></div>
               <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Mokėjimai (Stripe)</p><strong className="text-xs block mt-3 text-[#b06000]">Stripe dar neprijungtas — kol kas valdomi bandomieji laikotarpiai.</strong></div>
             </div>
             <div className="bg-white border border-[#dadce0] rounded-2xl overflow-hidden">
@@ -185,7 +202,7 @@ export default function AdminPage() {
               </div>
               <div className="divide-y divide-[#dadce0]">
                 {filteredUsers.map((user) => {
-                  const daysLeft = getTrialDaysLeft(user.trial_started_at)
+                  const daysLeft = getTrialDaysLeft(user)
                   return (
                     <div key={user.id} className="p-5 flex flex-col lg:flex-row lg:items-center gap-4">
                       <span className="h-10 w-10 rounded-xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center font-bold">{user.first_name[0] || user.company_name[0]}</span>
@@ -195,7 +212,7 @@ export default function AdminPage() {
                       </div>
                       <span className={`text-xs font-bold rounded-full px-3 py-1.5 w-fit ${daysLeft > 0 ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fce8e6] text-[#c5221f]'}`}>{daysLeft > 0 ? `Liko ${daysLeft} d.` : 'Pasibaigusi'}</span>
                       <div className="flex flex-wrap gap-2">
-                        <button onClick={() => runUserAction('extend_trial', user)} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl px-3 py-2 text-sm font-semibold">Pratęsti 14 d.</button>
+                        <button onClick={() => runUserAction('extend_trial', user, { days: 30 })} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl px-3 py-2 text-sm font-semibold">Pratęsti 30 d.</button>
                         <button onClick={() => runUserAction('expire_trial', user)} disabled={daysLeft === 0} className="border border-[#f9df96] text-[#b06000] hover:bg-[#fef7e0] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-sm font-semibold">Nutraukti</button>
                         <button onClick={() => router.push(`/dashboard?view_as=${user.id}`)} className="border border-[#c6dafc] bg-[#e8f0fe] text-[#1967d2] hover:bg-[#dbe7fb] rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2"><ExternalLink size={15} /> Dashboard</button>
                       </div>
@@ -247,9 +264,33 @@ export default function AdminPage() {
                   ))}
                   {selectedUser.recent_feedbacks.length === 0 && <p className="text-sm text-[#5f6368]">Atsiliepimų dar nėra.</p>}
                 </div>
-                <div className="flex flex-wrap gap-3 mt-7">
+                <div className="mt-7 rounded-xl border border-[#dadce0] p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-bold text-sm">Pratęsti prenumeratą</p>
+                    {selectedUser.trial_end && <span className="text-xs text-[#5f6368]">dabar galioja iki {new Date(selectedUser.trial_end).toLocaleDateString('lt-LT')}</span>}
+                  </div>
+                  <div className="flex items-end gap-2 mb-3">
+                    <div className="flex-1">
+                      <label className="block text-xs text-[#5f6368] mb-1">Pridėti dienų</label>
+                      <input type="number" min={1} max={3650} value={extendDays} onChange={(e) => setExtendDays(Number(e.target.value))} className="w-full bg-white border border-[#dadce0] rounded-xl p-2.5 text-sm" />
+                    </div>
+                    <button onClick={() => runUserAction('extend_trial', selectedUser, { days: extendDays || 30 })} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl px-4 py-2.5 text-sm font-semibold whitespace-nowrap">Pratęsti +{extendDays || 30} d.</button>
+                  </div>
+                  <div className="flex items-center justify-center gap-2 mb-3">
+                    {[30, 60, 90].map((d) => (
+                      <button key={d} onClick={() => setExtendDays(d)} className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${extendDays === d ? 'bg-[#e8f0fe] text-[#1967d2]' : 'bg-[#f1f3f4] text-[#3c4043]'}`}>{d} d.</button>
+                    ))}
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <label className="block text-xs text-[#5f6368] mb-1">…arba galioja iki datos (YYYY-MM-DD)</label>
+                      <input type="date" value={extendDate} onChange={(e) => setExtendDate(e.target.value)} className="w-full bg-white border border-[#dadce0] rounded-xl p-2.5 text-sm" />
+                    </div>
+                    <button onClick={() => extendDate && runUserAction('extend_trial', selectedUser, { endDate: extendDate })} disabled={!extendDate} className="border border-[#c6dafc] bg-[#e8f0fe] text-[#1967d2] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-4 py-2.5 text-sm font-semibold whitespace-nowrap">Nustatyti iki datos</button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3 mt-4">
                   <button onClick={() => router.push(`/dashboard?view_as=${selectedUser.id}`)} className="bg-[#202124] text-white rounded-xl px-4 py-2.5 text-sm font-semibold flex items-center gap-2"><ExternalLink size={16} /> Peržiūrėti kliento dashboard</button>
-                  <button onClick={() => runUserAction('extend_trial', selectedUser)} className="bg-[#1a73e8] text-white rounded-xl px-4 py-2.5 text-sm font-semibold">Pratęsti 14 dienų</button>
                   <button onClick={() => runUserAction('expire_trial', selectedUser)} className="border border-[#f9df96] text-[#b06000] hover:bg-[#fef7e0] rounded-xl px-4 py-2.5 text-sm font-semibold">Nutraukti prenumeratą</button>
                   <button onClick={() => runUserAction('delete_user', selectedUser)} className="border border-[#f5b7b1] text-[#c5221f] rounded-xl px-4 py-2.5 text-sm font-semibold">Ištrinti vartotoją</button>
                 </div>

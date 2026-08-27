@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin } from '@/lib/admin-auth'
+import { requireAdmin, getTrialEndMs, DAY_MS } from '@/lib/admin-auth'
 
 export async function GET(request: NextRequest) {
   const guard = await requireAdmin(request)
@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
         company_name: user.user_metadata?.company_name || 'Nenurodyta',
         first_name: user.user_metadata?.first_name || 'Nenurodyta',
         trial_started_at: user.user_metadata?.trial_started_at || null,
+        trial_end: user.user_metadata?.trial_end || null,
+        trial_days: user.user_metadata?.trial_days || null,
         monthly_goal: user.user_metadata?.monthly_goal || 60,
       })))
       hasMore = data.users.length === 1000
@@ -61,8 +63,10 @@ export async function PATCH(request: NextRequest) {
   const adminClient = guard.client
 
   try {
-    const body = await request.json() as { userId?: string; action?: 'extend_trial' | 'expire_trial' | 'delete_user'; days?: number }
+    const body = await request.json() as { userId?: string; action?: 'extend_trial' | 'expire_trial' | 'delete_user'; days?: number; endDate?: string }
     if (!body.userId || !body.action) return NextResponse.json({ error: 'Missing action' }, { status: 400 })
+    const { data: target, error: getError } = await adminClient.auth.admin.getUserById(body.userId)
+    if (getError || !target.user) return NextResponse.json({ error: getError?.message || 'User not found' }, { status: 404 })
 
     if (body.action === 'delete_user') {
       const { error } = await adminClient.auth.admin.deleteUser(body.userId)
@@ -71,21 +75,30 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (body.action === 'expire_trial') {
-      const expiredAt = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
-      const { data: target, error: getError } = await adminClient.auth.admin.getUserById(body.userId)
-      if (getError || !target.user) return NextResponse.json({ error: getError?.message || 'User not found' }, { status: 404 })
+      const expiredAt = new Date(Date.now() - 15 * DAY_MS).toISOString()
       const { error } = await adminClient.auth.admin.updateUserById(body.userId, {
-        user_metadata: { ...target.user.user_metadata, trial_started_at: expiredAt },
+        user_metadata: { ...target.user.user_metadata, trial_end: expiredAt, trial_started_at: expiredAt },
       })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ ok: true })
     }
 
-    const days = Math.max(1, Math.min(3650, body.days || 14))
-    const { data: target, error: getError } = await adminClient.auth.admin.getUserById(body.userId)
-    if (getError || !target.user) return NextResponse.json({ error: getError?.message || 'User not found' }, { status: 404 })
+    // extend_trial: arba nustatoma konkreti galiojimo iki data (endDate), arba pridedama dienų (days)
+    let newEndMs: number
+    if (body.endDate) {
+      const parsed = new Date(`${body.endDate}T23:59:59`)
+      if (Number.isNaN(parsed.getTime())) {
+        return NextResponse.json({ error: 'Neteisinga data. Naudokite YYYY-MM-DD formatą.' }, { status: 400 })
+      }
+      newEndMs = parsed.getTime()
+    } else {
+      const days = Math.max(1, Math.min(3650, body.days || 30))
+      const baseMs = getTrialEndMs(target.user.user_metadata)
+      newEndMs = (baseMs > Date.now() ? baseMs : Date.now()) + days * DAY_MS
+    }
+
     const { data, error } = await adminClient.auth.admin.updateUserById(body.userId, {
-      user_metadata: { ...target.user.user_metadata, trial_started_at: new Date().toISOString(), trial_days: days },
+      user_metadata: { ...target.user.user_metadata, trial_end: new Date(newEndMs).toISOString() },
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true, user: data.user })

@@ -50,6 +50,7 @@ export default function LoginPage() {
               first_name: firstName.trim(),
               phone: phone.trim(),
               trial_started_at: new Date().toISOString(),
+              trial_days: 14,
             },
           },
         }))
