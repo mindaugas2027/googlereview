@@ -67,27 +67,56 @@ export function ratingCount(stats: BusinessStats, rating: number): number {
 }
 
 /**
- * Perskaito vartotojo skaitiklius iš business_stats. Jei eilutės dar nėra
- * (pvz., nebuvo paleistas backfill SQL) — ją suskaičiuoja ir sukuria
- * (savęs atkūrimas), kad skaitikliai niekada nebūtų klaidingi.
+ * Perskaito vartotojo skaitiklius iš business_stats. Jei eilutės ar visos
+ * lentelės dar nėra (pvz., nebuvo paleistas migracijų SQL) — skaitiklius
+ * suskaičiuoja tiesiogiai iš feedbacks/qr_scans (senasis kelias), kad
+ * sistema veiktų net ir be lenktojo agregavimo.
  * Naudojama TIK serveryje (service role klientas).
  */
 export async function readOrInitStats(client: SupabaseClient, userId: string): Promise<BusinessStats> {
-  const { data } = await client
-    .from('business_stats')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle()
-  if (data) return normalizeStats(data)
+  try {
+    const { data } = await client
+      .from('business_stats')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (data) return normalizeStats(data)
+  } catch {
+    // business_stats lentelės dar nėra — tiesiogiai suskaičiuojame žemiau
+  }
 
   const [feedbackResult, scanResult] = await Promise.all([
     client.from('feedbacks').select('rating, sent_to_google').eq('user_id', userId),
     client.from('qr_scans').select('user_id', { count: 'exact', head: true }).eq('user_id', userId),
   ])
 
-  const stats: BusinessStats = { ...EMPTY_STATS, total_qr_scans: toCount(scanResult.count) }
-  for (const row of feedbackResult.data || []) {
-    stats.total_feedbacks += 1
+  const stats = computeFeedbackStats(
+    feedbackResult.data || [],
+    feedbackResult.data?.length || 0,
+    scanResult.error ? 0 : toCount(scanResult.count),
+  )
+  stats.total_qr_scans = scanResult.error ? 0 : toCount(scanResult.count)
+
+  if (stats.total_feedbacks > 0 || stats.total_qr_scans > 0) {
+    try {
+      // ignoreDuplicates — jei trigger'is jau sukūrė eilutę lygiagrečiai, paliekam jo vertes
+      await client
+        .from('business_stats')
+        .upsert({ user_id: userId, ...stats }, { onConflict: 'user_id', ignoreDuplicates: true })
+    } catch {
+      // lentelės nėra — praleidžiame, skaitiklius jau turime atmintyje
+    }
+  }
+  return stats
+}
+
+type FeedbackRow = { rating?: number | null; sent_to_google?: boolean | null }
+
+/** Iš atsiliepimų eilučių suskaičiuoja agreguotą statistiką (vienas bendras pagalbininkas). */
+function computeFeedbackStats(rows: FeedbackRow[], count: number, scanCount: number): BusinessStats {
+  const stats: BusinessStats = { ...EMPTY_STATS }
+  const length = rows.length
+  for (const row of rows) {
     if (row.sent_to_google) stats.google_redirects += 1
     const rating = Number(row.rating)
     if (rating >= 1 && rating <= 5) {
@@ -99,12 +128,56 @@ export async function readOrInitStats(client: SupabaseClient, userId: string): P
       else if (rating === 5) stats.rating_5 += 1
     }
   }
-
-  if (stats.total_feedbacks > 0 || stats.total_qr_scans > 0) {
-    // ignoreDuplicates — jei trigger'is jau sukūrė eilutę lygiagrečiai, paliekam jo vertes
-    await client
-      .from('business_stats')
-      .upsert({ user_id: userId, ...stats }, { onConflict: 'user_id', ignoreDuplicates: true })
-  }
+  stats.total_feedbacks = count > 0 ? count : length
+  stats.total_qr_scans = scanCount
   return stats
+}
+
+/** Visų nurodytų vartotojų skaitiklių žemėlapis, atsparus trūkstamai business_stats lentelei. */
+export async function readStatsForUsers(
+  client: SupabaseClient,
+  userIds: string[],
+): Promise<Map<string, BusinessStats>> {
+  const map = new Map<string, BusinessStats>()
+  if (!userIds.length) return map
+
+  // Pirma bandoma masinė business_stats užklausa (optimalu, kai lentelė yra)
+  const statsResult = await client
+    .from('business_stats')
+    .select('*')
+    .in('user_id', userIds)
+  if (!statsResult.error) {
+    for (const row of statsResult.data || []) {
+      map.set(String(row.user_id), normalizeStats(row))
+    }
+    const missingIds = userIds.filter((id) => !map.has(id))
+    for (const id of missingIds) {
+      map.set(id, await readOrInitStats(client, id))
+    }
+    return map
+  }
+
+  // Lentelės nėra (migracija nepaleista) — vienu kartu ištraukiame visus
+  // vartotojų atsiliepimus ir nuskaitymus, tada agreguojame kliento pusėje.
+  const [feedbackResult, scanResult] = await Promise.all([
+    client.from('feedbacks').select('user_id, rating, sent_to_google').in('user_id', userIds),
+    client.from('qr_scans').select('user_id').in('user_id', userIds),
+  ])
+  const scanCount = new Map<string, number>()
+  for (const s of scanResult.data || []) {
+    const key = String(s.user_id)
+    scanCount.set(key, (scanCount.get(key) || 0) + 1)
+  }
+  const perUserCount = new Map<string, number>()
+  for (const id of userIds) perUserCount.set(id, 0)
+  for (const f of feedbackResult.data || []) perUserCount.set(String(f.user_id), (perUserCount.get(String(f.user_id)) || 0) + 1)
+  const byUser = new Map<string, FeedbackRow[]>()
+  for (const f of feedbackResult.data || []) {
+    const key = String(f.user_id)
+    byUser.set(key, [...(byUser.get(key) || []), f])
+  }
+  for (const id of userIds) {
+    map.set(id, computeFeedbackStats(byUser.get(id) || [], perUserCount.get(id) || 0, scanCount.get(id) || 0))
+  }
+  return map
 }

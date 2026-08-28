@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, getTrialEndMs, DAY_MS } from '@/lib/admin-auth'
-import { readOrInitStats } from '@/lib/stats'
+import { readStatsForUsers, EMPTY_STATS } from '@/lib/stats'
 
 export async function GET(request: NextRequest) {
   const guard = await requireAdmin(request)
@@ -32,36 +32,14 @@ export async function GET(request: NextRequest) {
 
     const userIds = users.map((user) => String(user.id))
 
-    // Inkrementiniai skaitikliai iš business_stats (viena partija), o vartotojams
-    // be eilutės — savęs atkūrimas per readOrInitStats (retas atvejis).
-    const statsResult = userIds.length
-      ? await adminClient.from('business_stats').select('user_id, total_feedbacks, google_redirects, rating_sum, total_qr_scans').in('user_id', userIds)
-      : { data: [], error: null }
-    if (statsResult.error) return NextResponse.json({ error: statsResult.error.message }, { status: 500 })
-    type StatsRow = { user_id: string; total_feedbacks?: number; google_redirects?: number; rating_sum?: number; total_qr_scans?: number }
-    const statsByUser = new Map<string, { total_feedbacks: number; google_redirects: number; rating_sum: number; total_qr_scans: number }>()
-    for (const row of (statsResult.data || []) as StatsRow[]) {
-      statsByUser.set(String(row.user_id), {
-        total_feedbacks: Number(row.total_feedbacks) || 0,
-        google_redirects: Number(row.google_redirects) || 0,
-        rating_sum: Number(row.rating_sum) || 0,
-        total_qr_scans: Number(row.total_qr_scans) || 0,
-      })
-    }
-    const missingIds = userIds.filter((id) => !statsByUser.has(id))
-    for (const id of missingIds) {
-      const stats = await readOrInitStats(adminClient, id)
-      statsByUser.set(id, {
-        total_feedbacks: stats.total_feedbacks,
-        google_redirects: stats.google_redirects,
-        rating_sum: stats.rating_sum,
-        total_qr_scans: stats.total_qr_scans,
-      })
-    }
+    // Inkrementiniai skaitikliai: masine business_stats užklausa, o jei lentelės
+    // dar nėra (migracija nepaleista) — automatiškai skaičiuojama tiesiogiai.
+    const statsByUser = await readStatsForUsers(adminClient, userIds)
 
     return NextResponse.json({
       users: users.map((user) => {
-        const stats = statsByUser.get(String(user.id)) || { total_feedbacks: 0, google_redirects: 0, rating_sum: 0, total_qr_scans: 0 }
+        const userStats = statsByUser.get(String(user.id))
+        const stats = userStats || EMPTY_STATS
         return {
           ...user,
           feedback_count: Number(stats.total_feedbacks) || 0,

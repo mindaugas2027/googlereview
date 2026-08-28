@@ -253,8 +253,6 @@ export default function DashboardPage() {
         .eq('user_id', session.user.id)
         .gte('created_at', monthStart.toISOString());
       setMonthlyFeedbackCount(monthCount ?? 0);
-      // Įkelti inkrementinius skaitiklius (viso laikotarpio statistika) iš backend'o
-      await fetchStats(session.user.id);
       setLoading(false);
     };
 
@@ -501,6 +499,13 @@ export default function DashboardPage() {
       // skaitiklius taip pat atnaujins Realtime — tyliai praleidžiame
     }
   };
+
+  // Pirminis skaitiklių užkrovimas prisijungus (admino view_as tai jau padaryta checkUser'e)
+  useEffect(() => {
+    if (!user?.id || viewAsId) return;
+    void fetchStats(user.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- kraunama kai pasikeičia vartotojas
+  }, [user?.id, viewAsId]);
 
   /** Lengvų apžvalgos duomenų (savaitės grafiko dati + mėnesio kiekis) atnaujinimas. */
   const refreshLightData = async (businessId: string) => {
