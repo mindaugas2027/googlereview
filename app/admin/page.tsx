@@ -28,7 +28,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [query, setQuery] = useState('')
-  const [tab, setTab] = useState<'users' | 'payments' | 'settings'>('users')
+  const [tab, setTab] = useState<'users' | 'settings'>('users')
   const [error, setError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
     const [extendDays, setExtendDays] = useState(30)
@@ -126,7 +126,6 @@ export default function AdminPage() {
         <nav className="space-y-2">
           {[
             { id: 'users', label: 'Visi vartotojai', icon: Users },
-            { id: 'payments', label: 'Prenumeratos / Stripe', icon: CreditCard },
             { id: 'settings', label: 'Admin nustatymai', icon: Settings },
           ].map((item) => (
             <button key={item.id} onClick={() => setTab(item.id as typeof tab)} className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold text-left ${tab === item.id ? 'bg-[#1a73e8]' : 'text-[#bdc1c6] hover:bg-[#3c4043]'}`}>
@@ -146,7 +145,7 @@ export default function AdminPage() {
             <h1 className="text-3xl font-extrabold mt-1">Valdymo centras</h1>
             <p className="text-sm text-[#5f6368] mt-2">Sveiki, Mindaugai. Čia valdysite visas Getreview paskyras.</p>
           </div>
-          {(tab === 'users' || tab === 'payments') && (
+          {tab === 'users' && (
             <div className="relative">
               <Search size={17} className="absolute left-3 top-3 text-[#80868b]" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti įmonės ar vartotojo" className="bg-white border border-[#dadce0] rounded-xl py-2.5 pl-9 pr-3 text-sm w-full sm:w-80" />
