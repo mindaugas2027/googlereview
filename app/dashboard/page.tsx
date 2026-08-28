@@ -253,6 +253,8 @@ export default function DashboardPage() {
         .eq('user_id', session.user.id)
         .gte('created_at', monthStart.toISOString());
       setMonthlyFeedbackCount(monthCount ?? 0);
+      // Įkelti inkrementinius skaitiklius (viso laikotarpio statistika) iš backend'o
+      await fetchStats(session.user.id);
       setLoading(false);
     };
 
