@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, DAY_MS } from '@/lib/admin-auth'
+import { readOrInitStats } from '@/lib/stats'
 
 type RouteContext = { params: Promise<{ userId: string }> }
 
@@ -14,12 +15,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const { data: target, error: userError } = await adminClient.auth.admin.getUserById(userId)
   if (userError || !target.user) return NextResponse.json({ error: userError?.message || 'User not found' }, { status: 404 })
 
-  const [feedbackResult, scanResult] = await Promise.all([
-    adminClient.from('feedbacks').select('id, name, rating, comment, sent_to_google, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
-    adminClient.from('qr_scans').select('created_at').eq('user_id', userId).order('created_at', { ascending: false }),
+  // Inkrementiniai skaitikliai iš business_stats (sukuria eilutę, jei jos dar nėra)
+  const stats = await readOrInitStats(adminClient, userId)
+
+  // Lengvi pagalbiniai duomenys admino peržiūrai: paskutinių 49 d. dati (grafikui)
+  // ir šio mėnesio atsiliepimų kiekis (skaičiavimas serverio pusėje, be eilučių grąžinimo)
+  const since = new Date(Date.now() - 49 * DAY_MS).toISOString()
+  const monthStart = new Date()
+  monthStart.setDate(1)
+  monthStart.setHours(0, 0, 0, 0)
+  const [recentResult, monthResult] = await Promise.all([
+    adminClient.from('feedbacks').select('created_at').eq('user_id', userId).gte('created_at', since).order('created_at'),
+    adminClient.from('feedbacks').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', monthStart.toISOString()),
   ])
-  if (feedbackResult.error) return NextResponse.json({ error: feedbackResult.error.message }, { status: 500 })
-  if (scanResult.error) return NextResponse.json({ error: scanResult.error.message }, { status: 500 })
 
   return NextResponse.json({
     user: {
@@ -27,14 +35,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
       email: target.user.email,
       user_metadata: target.user.user_metadata || {},
     },
-    feedbacks: feedbackResult.data || [],
-    qr_scans: (scanResult.data || []).map((scan) => scan.created_at),
+    stats,
+    recent_feedback_dates: (recentResult.data || []).map((row) => row.created_at),
+    monthly_feedback_count: monthResult.count ?? 0,
   })
   } catch (cause) {
     console.error('[api/admin/users/[userId]] GET nepavyko:', cause)
     return NextResponse.json({ error: 'Netikėta serverio klaida.' }, { status: 500 })
   }
 }
+
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const guard = await requireAdmin(request)

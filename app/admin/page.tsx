@@ -20,7 +20,6 @@ type AdminUser = {
   google_redirects: number
   qr_scans: number
   average_rating: number | null
-  recent_feedbacks: Array<{ name: string; rating: number; comment: string; created_at: string }>
 }
 
 export default function AdminPage() {

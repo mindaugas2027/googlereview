@@ -32,33 +32,41 @@ export type AdminGuard =
   | { ok: true; client: SupabaseClient }
   | { ok: false; status: number; error: string }
 
+export type ServiceGuard =
+  | { ok: true; client: SupabaseClient; userId: string; userEmail: string }
+  | { ok: false; status: number; error: string }
+
+function createServiceClient(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceKey) return null
+  return createClient(url, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
+
+function missingConfigError(): string {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
+  const missing: string[] = []
+  if (!url) missing.push('NEXT_PUBLIC_SUPABASE_URL')
+  if (!serviceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY')
+  return `Serverio konfigūracija nepilna — hostingo aplinkoje nerasta šių aplinkos kintamųjų: ${missing.join(', ')}. Pridėkite juos hostingo nustatymuose (Vercel: Settings → Environment Variables) ir atlikite Redeploy.`
+}
+
 /**
  * Tikrina Bearer token ir grąžina admin klientą arba apibrėžtą JSON klaidą.
  * Niekuomet nemeta išimčių — visada grąžina rezultatą, kad API route'ai
  * negrižtų su ne-JSON (HTML 500) atsakymu, dėl ko priekinė dalis užstringa.
  */
 export async function requireAdmin(request: Request): Promise<AdminGuard> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url || !serviceKey) {
-    const missing: string[] = []
-    if (!url) missing.push('NEXT_PUBLIC_SUPABASE_URL')
-    if (!serviceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY')
-    return {
-      ok: false,
-      status: 500,
-      error: `Serverio konfigūracija nepilna — hostingo aplinkoje nerasta šių aplinkos kintamųjų: ${missing.join(', ')}. Pridėkite juos hostingo nustatymuose (Vercel: Settings → Environment Variables) ir atlikite Redeploy.`,
-    }
-  }
+  const client = createServiceClient()
+  if (!client) return { ok: false, status: 500, error: missingConfigError() }
 
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (!token) return { ok: false, status: 401, error: 'Unauthorized' }
-
-  const client = createClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
 
   try {
     const { data: { user }, error } = await client.auth.getUser(token)
@@ -71,3 +79,36 @@ export async function requireAdmin(request: Request): Promise<AdminGuard> {
     return { ok: false, status: 502, error: 'Nepavyko susisiekti su Supabase Auth tarnyba.' }
   }
 }
+
+/**
+ * Tikrina Bearer token bet kuriam autentifikuotam vartotojui ir grąžina
+ * servisą pasiekiantį Supabase klientą su jo tapatybe. Naudojama maršrutuose,
+ * kurie aptarnauja savo duomenis (arba admino peržiūrą) be RLS apribojimų.
+ */
+export async function requireServiceUser(request: Request): Promise<ServiceGuard> {
+  const client = createServiceClient()
+  if (!client) return { ok: false, status: 500, error: missingConfigError() }
+
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+  if (!token) return { ok: false, status: 401, error: 'Unauthorized' }
+
+  try {
+    const { data: { user }, error } = await client.auth.getUser(token)
+    if (error || !user) return { ok: false, status: 401, error: 'Unauthorized' }
+    return {
+      ok: true,
+      client,
+      userId: user.id,
+      userEmail: user.email?.toLowerCase() ?? '',
+    }
+  } catch (cause) {
+    console.error('[admin-auth] Supabase Auth nepasiekiamas:', cause)
+    return { ok: false, status: 502, error: 'Nepavyko susisiekti su Supabase Auth tarnyba.' }
+  }
+}
+
+/** Ar vartotojas, kurio duomenis prašoma, yra pats prašytojas arba administratorius. */
+export function canAccessBusiness(requestedUserId: string, callerUserId: string, callerEmail: string): boolean {
+  return requestedUserId === callerUserId || callerEmail === ADMIN_EMAIL
+}
+

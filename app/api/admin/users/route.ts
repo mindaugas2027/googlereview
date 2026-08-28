@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, getTrialEndMs, DAY_MS } from '@/lib/admin-auth'
+import { readOrInitStats } from '@/lib/stats'
 
 export async function GET(request: NextRequest) {
   const guard = await requireAdmin(request)
@@ -29,25 +30,46 @@ export async function GET(request: NextRequest) {
       page += 1
     }
 
-    const userIds = users.map((user) => user.id)
-    const [feedbackResult, scanResult] = await Promise.all([
-      userIds.length ? adminClient.from('feedbacks').select('user_id, rating, sent_to_google, comment, name, created_at').in('user_id', userIds) : Promise.resolve({ data: [], error: null }),
-      userIds.length ? adminClient.from('qr_scans').select('user_id, created_at').in('user_id', userIds) : Promise.resolve({ data: [], error: null }),
-    ])
-    if (feedbackResult.error) return NextResponse.json({ error: feedbackResult.error.message }, { status: 500 })
-    if (scanResult.error) return NextResponse.json({ error: scanResult.error.message }, { status: 500 })
+    const userIds = users.map((user) => String(user.id))
+
+    // Inkrementiniai skaitikliai iš business_stats (viena partija), o vartotojams
+    // be eilutės — savęs atkūrimas per readOrInitStats (retas atvejis).
+    const statsResult = userIds.length
+      ? await adminClient.from('business_stats').select('user_id, total_feedbacks, google_redirects, rating_sum, total_qr_scans').in('user_id', userIds)
+      : { data: [], error: null }
+    if (statsResult.error) return NextResponse.json({ error: statsResult.error.message }, { status: 500 })
+    type StatsRow = { user_id: string; total_feedbacks?: number; google_redirects?: number; rating_sum?: number; total_qr_scans?: number }
+    const statsByUser = new Map<string, { total_feedbacks: number; google_redirects: number; rating_sum: number; total_qr_scans: number }>()
+    for (const row of (statsResult.data || []) as StatsRow[]) {
+      statsByUser.set(String(row.user_id), {
+        total_feedbacks: Number(row.total_feedbacks) || 0,
+        google_redirects: Number(row.google_redirects) || 0,
+        rating_sum: Number(row.rating_sum) || 0,
+        total_qr_scans: Number(row.total_qr_scans) || 0,
+      })
+    }
+    const missingIds = userIds.filter((id) => !statsByUser.has(id))
+    for (const id of missingIds) {
+      const stats = await readOrInitStats(adminClient, id)
+      statsByUser.set(id, {
+        total_feedbacks: stats.total_feedbacks,
+        google_redirects: stats.google_redirects,
+        rating_sum: stats.rating_sum,
+        total_qr_scans: stats.total_qr_scans,
+      })
+    }
 
     return NextResponse.json({
       users: users.map((user) => {
-        const feedbacks = (feedbackResult.data || []).filter((feedback) => feedback.user_id === user.id)
-        const scans = (scanResult.data || []).filter((scan) => scan.user_id === user.id)
+        const stats = statsByUser.get(String(user.id)) || { total_feedbacks: 0, google_redirects: 0, rating_sum: 0, total_qr_scans: 0 }
         return {
           ...user,
-          feedback_count: feedbacks.length,
-          google_redirects: feedbacks.filter((feedback) => feedback.sent_to_google).length,
-          qr_scans: scans.length,
-          average_rating: feedbacks.length ? Number((feedbacks.reduce((sum, feedback) => sum + feedback.rating, 0) / feedbacks.length).toFixed(1)) : null,
-          recent_feedbacks: feedbacks.slice(0, 5),
+          feedback_count: Number(stats.total_feedbacks) || 0,
+          google_redirects: Number(stats.google_redirects) || 0,
+          qr_scans: Number(stats.total_qr_scans) || 0,
+          average_rating: Number(stats.total_feedbacks) > 0
+            ? Number((Number(stats.rating_sum) / Number(stats.total_feedbacks)).toFixed(1))
+            : null,
         }
       }),
     })

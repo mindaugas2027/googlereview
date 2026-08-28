@@ -1,7 +1,8 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { EMPTY_STATS, FEEDBACK_PAGE_SIZE, normalizeStats, ratingCount, type BusinessStats } from '@/lib/stats';
 import {
   BarChart3, Download, Eye, Globe2, LayoutDashboard, LogOut, MapPin,
   Menu, MessageSquare, QrCode, ScanLine, Send, Settings, Sparkles, Star, X, Zap, Loader2, ArrowUpRight
@@ -113,38 +114,43 @@ export default function DashboardPage() {
     linkedin_url: '',
   });
 
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
-  const [qrScans, setQrScans] = useState<string[]>([]);
+  const [stats, setStats] = useState<BusinessStats>(EMPTY_STATS);
+  const [pagedFeedbacks, setPagedFeedbacks] = useState<Feedback[]>([]);
+  const [feedbackPage, setFeedbackPage] = useState(1);
+  const [feedbackTotal, setFeedbackTotal] = useState(0);
+  const [feedbackPageLoading, setFeedbackPageLoading] = useState(false);
+  const [recentFeedbackDates, setRecentFeedbackDates] = useState<string[]>([]);
+  const [monthlyFeedbackCount, setMonthlyFeedbackCount] = useState(0);
 
-  const averageRating = feedbacks.length
-    ? (feedbacks.reduce((total, feedback) => total + feedback.rating, 0) / feedbacks.length).toFixed(1)
-    : '—';
-  const googleRedirects = feedbacks.filter((feedback) => feedback.sentToGoogle).length;
-  const reviewConversion = qrScans.length ? Math.round((feedbacks.length / qrScans.length) * 100) : 0;
-  const positiveFeedbacks = feedbacks.filter((feedback) => feedback.rating >= business.google_min_rating).length;
-  const positiveRate = feedbacks.length ? Math.round((positiveFeedbacks / feedbacks.length) * 100) : 0;
-  const currentMonth = new Date();
-  const monthlyFeedbacks = feedbacks.filter((feedback) => {
-    const createdAt = new Date(feedback.createdAt || feedback.date);
-    return createdAt.getMonth() === currentMonth.getMonth() && createdAt.getFullYear() === currentMonth.getFullYear();
-  }).length;
+  // Viso laikotarpio agregatai iš inkrementinių skaitiklių (business_stats lentelės,
+  // kurią palaiko Supabase trigger'iai) — frontend'e jokių pilnų sąrašų skaičiavimų.
+  const statsTotal = stats.total_feedbacks;
+  const averageRating = statsTotal ? (stats.rating_sum / statsTotal).toFixed(1) : '—';
+  const googleRedirects = stats.google_redirects;
+  const reviewConversion = stats.total_qr_scans ? Math.round((statsTotal / stats.total_qr_scans) * 100) : 0;
+  const safeMinRating = Math.min(5, Math.max(1, Math.round(Number(business.google_min_rating)) || 4));
+  const positiveFeedbacks = [5, 4, 3, 2, 1].filter((rating) => rating >= safeMinRating).reduce((total, rating) => total + ratingCount(stats, rating), 0);
+  const positiveRate = statsTotal ? Math.round((positiveFeedbacks / statsTotal) * 100) : 0;
+  const monthlyFeedbacks = monthlyFeedbackCount;
   const monthlyGoalProgress = Math.min(Math.round((monthlyFeedbacks / monthlyGoal) * 100), 100);
   const ratingDistribution = [5, 4, 3, 2, 1].map((rating) => ({
     rating,
-    count: feedbacks.filter((feedback) => feedback.rating === rating).length,
+    count: ratingCount(stats, rating),
   }));
   const maxRatingCount = Math.max(...ratingDistribution.map((item) => item.count), 1);
-  const visibleFeedbacks = feedbackRatingFilter === null
-    ? feedbacks
-    : feedbacks.filter((feedback) => feedback.rating === feedbackRatingFilter);
+  const totalFeedbackPages = Math.max(1, Math.ceil(feedbackTotal / FEEDBACK_PAGE_SIZE));
+  const feedbackPageNumbers = Array.from(new Set(
+    [1, feedbackPage - 1, feedbackPage, feedbackPage + 1, totalFeedbackPages]
+      .filter((value) => value >= 1 && value <= totalFeedbackPages),
+  )).sort((first, second) => first - second);
   const feedbacksByWeek = Array.from({ length: 7 }, (_, index) => {
     const weekAge = 6 - index;
     // eslint-disable-next-line react-hooks/purity -- savaitės laiko langas skaičiuojamas renderio metu pagal dabartinę datą
     const intervalEnd = Date.now() - weekAge * 7 * 24 * 60 * 60 * 1000;
     const intervalStart = intervalEnd - 7 * 24 * 60 * 60 * 1000;
-    return feedbacks.filter((feedback) => {
-      const createdAt = new Date(feedback.createdAt || feedback.date).getTime();
-      return createdAt >= intervalStart && createdAt < intervalEnd;
+    return recentFeedbackDates.filter((createdAt) => {
+      const createdAtTime = new Date(createdAt).getTime();
+      return createdAtTime >= intervalStart && createdAtTime < intervalEnd;
     }).length;
   });
   const feedbackChartMax = Math.max(...feedbacksByWeek, 1);
@@ -201,8 +207,9 @@ export default function DashboardPage() {
           linkedin_url: metadata.linkedin_url || '',
         }));
         setMonthlyGoal(Math.max(1, Number(metadata.monthly_goal) || 60));
-        setFeedbacks((payload.feedbacks || []).map(mapFeedback));
-        setQrScans(payload.qr_scans || []);
+        setStats(normalizeStats(payload.stats));
+        setRecentFeedbackDates(Array.isArray(payload.recent_feedback_dates) ? payload.recent_feedback_dates.map(String) : []);
+        setMonthlyFeedbackCount(Number(payload.monthly_feedback_count) || 0);
         setLoading(false);
         return;
       }
@@ -227,20 +234,25 @@ export default function DashboardPage() {
         linkedin_url: savedLinkedinUrl,
       }));
       setMonthlyGoal(Math.max(1, savedMonthlyGoal));
-      const { data: savedFeedbacks } = await supabase
+      // Lengvi duomenys apžvalgai: paskutinių 49 d. dati (grafikui) ir šio mėnesio
+      // atsiliepimų kiekis — skaičiuojama Supabase pusėje, eilučių negrąžina
+      const sinceIso = new Date(Date.now() - 49 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentRows } = await supabase
         .from('feedbacks')
-        .select('id, name, rating, comment, created_at, sent_to_google')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-      if (savedFeedbacks) {
-        setFeedbacks(savedFeedbacks.map(mapFeedback));
-      }
-      const { data: savedScans } = await supabase
-        .from('qr_scans')
         .select('created_at')
         .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-      if (savedScans) setQrScans(savedScans.map((scan) => scan.created_at));
+        .gte('created_at', sinceIso)
+        .order('created_at');
+      setRecentFeedbackDates((recentRows || []).map((row) => row.created_at));
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const { count: monthCount } = await supabase
+        .from('feedbacks')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', session.user.id)
+        .gte('created_at', monthStart.toISOString());
+      setMonthlyFeedbackCount(monthCount ?? 0);
       setLoading(false);
     };
 
@@ -359,9 +371,15 @@ export default function DashboardPage() {
 
   const deleteAllFeedback = async () => {
     if (!viewAsId && !user) return;
-    if (feedbacks.length === 0) return;
+    if (statsTotal === 0) return;
     const confirmed = window.confirm('Ar tikrai norite ištrinti visus atsiliepimus? Šio veiksmo atšaukti nebus galima.');
     if (!confirmed) return;
+
+    const resetList = () => {
+      setPagedFeedbacks([]);
+      setFeedbackTotal(0);
+      setFeedbackPage(1);
+    };
 
     if (viewAsId) {
       const result = await adminApiRequest('PATCH', { action: 'delete_feedbacks' });
@@ -369,7 +387,8 @@ export default function DashboardPage() {
         setProfileMessage(`Atsiliepimų ištrinti nepavyko: ${result.error.message}`);
         return;
       }
-      setFeedbacks([]);
+      resetList();
+      await fetchStats(viewAsId);
       return;
     }
 
@@ -379,7 +398,8 @@ export default function DashboardPage() {
       setProfileMessage(`Atsiliepimų ištrinti nepavyko: ${error.message}`);
       return;
     }
-    setFeedbacks([]);
+    resetList();
+    await fetchStats(user.id);
   };
 
   const uploadLogo = async (file: File) => {
@@ -463,6 +483,126 @@ export default function DashboardPage() {
     }
     await navigator.clipboard?.writeText(reviewUrl);
   };
+
+  /** Inkrementinių skaitiklių atnaujinimas iš backend'o (viso laikotarpio statistika). */
+  const fetchStats = async (businessId?: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const params = new URLSearchParams();
+    if (businessId) params.set('business', businessId);
+    const query = params.toString();
+    try {
+      const response = await fetch(`/api/stats${query ? `?${query}` : ''}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload?.stats) setStats(normalizeStats(payload.stats));
+    } catch {
+      // skaitiklius taip pat atnaujins Realtime — tyliai praleidžiame
+    }
+  };
+
+  /** Lengvų apžvalgos duomenų (savaitės grafiko dati + mėnesio kiekis) atnaujinimas. */
+  const refreshLightData = async (businessId: string) => {
+    if (viewAsId) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      try {
+        const response = await fetch(`/api/admin/users/${businessId}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload) return;
+        setStats(normalizeStats(payload.stats));
+        setRecentFeedbackDates(Array.isArray(payload.recent_feedback_dates) ? payload.recent_feedback_dates.map(String) : []);
+        setMonthlyFeedbackCount(Number(payload.monthly_feedback_count) || 0);
+      } catch {
+        // tyliai praleidžiame
+      }
+      return;
+    }
+    const sinceIso = new Date(Date.now() - 49 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentRows } = await supabase
+      .from('feedbacks')
+      .select('created_at')
+      .eq('user_id', businessId)
+      .gte('created_at', sinceIso)
+      .order('created_at');
+    setRecentFeedbackDates((recentRows || []).map((row) => row.created_at));
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const { count } = await supabase
+      .from('feedbacks')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', businessId)
+      .gte('created_at', monthStart.toISOString());
+    setMonthlyFeedbackCount(count ?? 0);
+  };
+
+  /** Krauna TIK vieno puslapio (21) atsiliepimus iš serverio — ne visą sąrašą. */
+  const loadFeedbackPage = async (
+    pageNumber: number = feedbackPage,
+    sort: typeof feedbackSort = feedbackSort,
+    ratingFilter: number | null = feedbackRatingFilter,
+  ) => {
+    const businessId = viewAsId || user?.id;
+    if (!businessId) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    setFeedbackPageLoading(true);
+    try {
+      const params = new URLSearchParams({ business: businessId, page: String(pageNumber), sort });
+      if (ratingFilter !== null) params.set('rating', String(ratingFilter));
+      const response = await fetch(`/api/feedbacks?${params.toString()}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || `Nepavyko įkelti atsiliepimų (${response.status}).`);
+      const rows = Array.isArray(payload?.feedbacks) ? payload.feedbacks : [];
+      setPagedFeedbacks(rows.map(mapFeedback));
+      setFeedbackTotal(Number(payload?.total) || 0);
+      setFeedbackPage(Math.max(1, Number(payload?.page) || pageNumber));
+    } catch (cause) {
+      setPagedFeedbacks([]);
+      setFeedbackTotal(0);
+      setProfileMessage(cause instanceof Error ? cause.message : 'Nepavyko įkelti atsiliepimų.');
+    } finally {
+      setFeedbackPageLoading(false);
+    }
+  };
+
+  // Naujausios loader'io ir puslapio versijos nuorodos Realtime atnaujinimams —
+  // refs atnaujinami efektuose, kad negalėtų react-hooks/refs taisyklė
+  const loadFeedbackPageRef = useRef(loadFeedbackPage);
+  const pageRef = useRef(page);
+  useEffect(() => {
+    loadFeedbackPageRef.current = loadFeedbackPage;
+  });
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
+
+  // „Atsiliepimai" skiltis kraunama tik atidaryus ją — perjungus puslapį,
+  // pakeitus rikiavimą ar filtrą iš serverio kraunamos tik 21 eilutės
+  useEffect(() => {
+    if (page !== 'feedback') return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sąmoningai krauname šio tab'o puslapį tik atidarius jį
+    void loadFeedbackPage(feedbackPage, feedbackSort, feedbackRatingFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- kraunama reaguojant į puslapio/rikiavimo/filtro pasikeitimus
+  }, [page, feedbackPage, feedbackSort, feedbackRatingFilter]);
+
+  // Inkrementinis atnaujinimas: Supabase trigger'is pakeičia business_stats eilutę,
+  // o Realtime momentaliai perduoda naujus skaitiklius į frontend'ą (be perkrovimo)
+  useEffect(() => {
+    if (!user?.id || viewAsId) return;
+    const channel = supabase
+      .channel(`business-stats-${user.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'business_stats', filter: `user_id=eq.${user.id}` }, (payload) => {
+        setStats(normalizeStats(payload.new));
+        void refreshLightData(user.id);
+        if (pageRef.current === 'feedback') loadFeedbackPageRef.current();
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- prenumerata priklauso tik nuo vartotojo
+  }, [user?.id, viewAsId]);
 
   const downloadPrintPdf = async () => {
     if (!reviewUrl || pdfDownloading) return;
@@ -637,9 +777,9 @@ export default function DashboardPage() {
 
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 {[
-                  { label: 'QR nuskaitymai', value: qrScans.length.toString(), change: 'viso nuskaitymų', icon: ScanLine },
-                  { label: 'Gauti atsiliepimai', value: feedbacks.length.toString(), change: `${reviewConversion}% konversija`, icon: MessageSquare },
-                  { label: 'Vid. įvertinimas', value: feedbacks.length ? `${averageRating} / 5` : '—', change: 'iš realių atsiliepimų', icon: Star },
+                  { label: 'QR nuskaitymai', value: stats.total_qr_scans.toString(), change: 'viso nuskaitymų', icon: ScanLine },
+                  { label: 'Gauti atsiliepimai', value: statsTotal.toString(), change: `${reviewConversion}% konversija`, icon: MessageSquare },
+                  { label: 'Vid. įvertinimas', value: statsTotal ? `${averageRating} / 5` : '—', change: 'viso laikotarpio', icon: Star },
                   { label: 'Google paspaudimai', value: googleRedirects.toString(), change: 'viso nukreipimų', icon: Globe2 }
                 ].map((s, i) => (
                   <div key={i} className="bg-white border border-[#dadce0] p-5 rounded-2xl shadow-sm">
@@ -670,25 +810,44 @@ export default function DashboardPage() {
 
           {page === 'feedback' && (
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6"><div><h1 className="text-3xl font-extrabold text-[#202124]">Atsiliepimai</h1><p className="text-sm text-[#5f6368] mt-2">Klientų įvertinimai, žinutės ir nukreipimai į Google vienoje vietoje.</p></div><div className="flex items-center gap-2"><select value={feedbackSort} onChange={(event) => setFeedbackSort(event.target.value as 'newest' | 'oldest' | 'rating-high' | 'rating-low')} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]"><option value="newest">Naujausi pirmi</option><option value="oldest">Seniausi pirmi</option><option value="rating-high">Daugiausia žvaigždučių</option><option value="rating-low">Mažiausiai žvaigždučių</option></select><button type="button" onClick={deleteAllFeedback} disabled={feedbacks.length === 0} className="border border-[#f5b7b1] text-[#c5221f] hover:bg-[#fce8e6] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2.5 text-sm font-semibold">Ištrinti visus</button></div></div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8"><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Gauti atsiliepimai</div><div className="text-2xl font-extrabold mt-2">{feedbacks.length}</div></div><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Vidutinis įvertinimas</div><div className="flex items-center gap-2 mt-2"><span className="text-2xl font-extrabold">{averageRating}</span>{feedbacks.length > 0 && <span className="flex text-[#f29900]">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= Math.round(Number(averageRating)) ? 'currentColor' : 'none'} />)}</span>}</div></div><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Nukreipta į Google</div><div className="text-2xl font-extrabold mt-2">{googleRedirects}</div></div></div>
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6"><div><h1 className="text-3xl font-extrabold text-[#202124]">Atsiliepimai</h1><p className="text-sm text-[#5f6368] mt-2">Klientų įvertinimai, žinutės ir nukreipimai į Google vienoje vietoje.</p></div><div className="flex items-center gap-2"><select value={feedbackSort} onChange={(event) => { setFeedbackSort(event.target.value as 'newest' | 'oldest' | 'rating-high' | 'rating-low'); setFeedbackPage(1); }} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]"><option value="newest">Naujausi pirmi</option><option value="oldest">Seniausi pirmi</option><option value="rating-high">Daugiausia žvaigždučių</option><option value="rating-low">Mažiausiai žvaigždučių</option></select><button type="button" onClick={deleteAllFeedback} disabled={statsTotal === 0} className="border border-[#f5b7b1] text-[#c5221f] hover:bg-[#fce8e6] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2.5 text-sm font-semibold">Ištrinti visus</button></div></div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8"><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Gauti atsiliepimai</div><div className="text-2xl font-extrabold mt-2">{statsTotal}</div></div><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Vidutinis įvertinimas</div><div className="flex items-center gap-2 mt-2"><span className="text-2xl font-extrabold">{averageRating}</span>{statsTotal > 0 && <span className="flex text-[#f29900]">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= Math.round(Number(averageRating)) ? 'currentColor' : 'none'} />)}</span>}</div></div><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Nukreipta į Google</div><div className="text-2xl font-extrabold mt-2">{googleRedirects}</div></div></div>
               <div className="mb-3 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#34a853]" /><h2 className="text-sm font-bold uppercase tracking-wider text-[#5f6368]">Klientų atsiliepimai</h2></div>
-              <div className="flex flex-wrap items-center gap-2 mb-4"><button type="button" onClick={() => setFeedbackRatingFilter(null)} className={`px-3 py-2 rounded-xl text-sm font-semibold ${feedbackRatingFilter === null ? 'bg-[#1a73e8] text-white' : 'bg-white border border-[#dadce0] text-[#5f6368]'}`}>Visi</button>{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" aria-label={`Rodyti ${rating} žvaigždučių atsiliepimus`} onClick={() => setFeedbackRatingFilter(rating)} className={`flex items-center gap-1 px-2.5 py-2 rounded-xl text-sm font-semibold ${feedbackRatingFilter === rating ? 'bg-[#f29900] text-white' : 'bg-white border border-[#dadce0] text-[#f29900]'}`}>{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= rating ? 'currentColor' : 'none'} />)}</button>)}</div>
+              <div className="flex flex-wrap items-center gap-2 mb-4"><button type="button" onClick={() => { setFeedbackRatingFilter(null); setFeedbackPage(1); }} className={`px-3 py-2 rounded-xl text-sm font-semibold ${feedbackRatingFilter === null ? 'bg-[#1a73e8] text-white' : 'bg-white border border-[#dadce0] text-[#5f6368]'}`}>Visi</button>{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" aria-label={`Rodyti ${rating} žvaigždučių atsiliepimus`} onClick={() => { setFeedbackRatingFilter(rating); setFeedbackPage(1); }} className={`flex items-center gap-1 px-2.5 py-2 rounded-xl text-sm font-semibold ${feedbackRatingFilter === rating ? 'bg-[#f29900] text-white' : 'bg-white border border-[#dadce0] text-[#f29900]'}`}>{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= rating ? 'currentColor' : 'none'} />)}</button>)}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {feedbacks.length === 0 && <div className="sm:col-span-2 xl:col-span-3 bg-white border border-[#dadce0] rounded-2xl p-6 sm:p-8 shadow-sm"><div className="flex items-start gap-4"><span className="h-12 w-12 shrink-0 rounded-2xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center"><MessageSquare size={23} /></span><div><h2 className="font-bold text-lg">Atsiliepimų dar nėra</h2><p className="text-sm text-[#5f6368] mt-1 max-w-lg">Kai klientai įvertins jūsų paslaugą, jų vardai, žvaigždutės ir žinutės bus rodomi šioje skiltyje.</p></div></div></div>}
-                {feedbacks.length > 0 && visibleFeedbacks.length === 0 && <div className="sm:col-span-2 xl:col-span-3 bg-white border border-dashed border-[#b7bdc4] rounded-2xl p-8 text-center text-sm text-[#5f6368]">Šio įvertinimo atsiliepimų nėra.</div>}
-                {[...visibleFeedbacks].sort((first, second) => feedbackSort === 'rating-high' ? second.rating - first.rating : feedbackSort === 'rating-low' ? first.rating - second.rating : feedbackSort === 'newest' ? new Date(second.createdAt || second.date).getTime() - new Date(first.createdAt || first.date).getTime() : new Date(first.createdAt || first.date).getTime() - new Date(second.createdAt || second.date).getTime()).map((item) => (
+                {statsTotal === 0 && <div className="sm:col-span-2 xl:col-span-3 bg-white border border-[#dadce0] rounded-2xl p-6 sm:p-8 shadow-sm"><div className="flex items-start gap-4"><span className="h-12 w-12 shrink-0 rounded-2xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center"><MessageSquare size={23} /></span><div><h2 className="font-bold text-lg">Atsiliepimų dar nėra</h2><p className="text-sm text-[#5f6368] mt-1 max-w-lg">Kai klientai įvertins jūsų paslaugą, jų vardai, žvaigždutės ir žinutės bus rodomi šioje skiltyje.</p></div></div></div>}
+                {!feedbackPageLoading && statsTotal > 0 && pagedFeedbacks.length === 0 && <div className="sm:col-span-2 xl:col-span-3 bg-white border border-dashed border-[#b7bdc4] rounded-2xl p-8 text-center text-sm text-[#5f6368]">Šiame puslapyje atsiliepimų nėra.</div>}
+                {feedbackPageLoading && <div className="sm:col-span-2 xl:col-span-3 bg-white border border-[#dadce0] rounded-2xl p-6 text-center text-sm text-[#5f6368]">Įkeliama…</div>}
+                {!feedbackPageLoading && pagedFeedbacks.map((item) => (
                   <div key={item.id} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="flex items-start gap-4"><span className={`h-11 w-11 shrink-0 rounded-full grid place-items-center text-sm font-bold ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.name[0]?.toUpperCase() || '?'}</span><div className="min-w-0 flex-1"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div className="flex flex-wrap items-center gap-3"><span className="font-bold text-[#202124]">{item.name}</span><span className="flex items-center text-[#f29900] text-sm gap-1">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= item.rating ? 'currentColor' : 'none'} />)} <span className="text-[#5f6368] ml-1">{item.rating}/5</span></span></div><span className="text-xs text-[#80868b]">{item.date}</span></div><div className={`inline-flex text-[11px] font-bold uppercase tracking-wide rounded-full px-2 py-1 mt-3 ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.sentToGoogle ? 'Nukreipta į Google' : 'Privati žinutė vadovui'}</div><p className="text-[#3c4043] text-sm leading-relaxed mt-3">{item.comment}</p></div></div></div>
                 ))}
               </div>
+              {statsTotal > 0 && totalFeedbackPages > 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 mt-6">
+                  <span className="text-xs text-[#5f6368]">Rodoma {Math.min((feedbackPage - 1) * FEEDBACK_PAGE_SIZE + 1, feedbackTotal)}–{Math.min(feedbackPage * FEEDBACK_PAGE_SIZE, feedbackTotal)} iš {feedbackTotal}</span>
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => setFeedbackPage(Math.max(1, feedbackPage - 1))} disabled={feedbackPage <= 1 || feedbackPageLoading} className="border border-[#dadce0] bg-white hover:bg-[#f1f3f4] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-sm font-semibold text-[#3c4043]">Ankstesnis</button>
+                    {feedbackPageNumbers.map((value, index) => {
+                      const previous = feedbackPageNumbers[index - 1];
+                      return (
+                        <span key={value} className="flex items-center gap-1.5">
+                          {previous !== undefined && value - previous > 1 && <span className="px-0.5 text-[#80868b]">…</span>}
+                          <button type="button" onClick={() => setFeedbackPage(value)} disabled={feedbackPageLoading} className={`rounded-xl px-3 py-2 text-sm font-semibold ${value === feedbackPage ? 'bg-[#1a73e8] text-white' : 'border border-[#dadce0] bg-white text-[#3c4043] hover:bg-[#f1f3f4]'}`}>{value}</button>
+                        </span>
+                      );
+                    })}
+                    <button type="button" onClick={() => setFeedbackPage(Math.min(totalFeedbackPages, feedbackPage + 1))} disabled={feedbackPage >= totalFeedbackPages || feedbackPageLoading} className="border border-[#dadce0] bg-white hover:bg-[#f1f3f4] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-sm font-semibold text-[#3c4043]">Tolesnis</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {page === 'analytics' && (
             <div>
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-8"><div><span className="text-xs font-bold text-[#1a73e8] uppercase tracking-wider">DUOMENYS</span><h1 className="text-3xl font-extrabold mt-1">Analitika</h1><p className="text-sm text-[#5f6368] mt-1">Supraskite, kas labiausiai veikia jūsų reputaciją.</p></div><select className="bg-white border border-[#dadce0] rounded-xl px-3 py-2 text-sm text-[#3c4043]"><option>Šis mėnuo</option><option>Praėjęs mėnuo</option></select></div>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[{ label: 'Konversija į atsiliepimą', value: `${reviewConversion}%`, change: `${feedbacks.length} iš ${qrScans.length} nuskaitymų` }, { label: 'Teigiami vertinimai', value: `${positiveRate}%`, change: `${positiveFeedbacks} atsiliepimai virš slenksčio` }, { label: 'Atsiliepimų vidurkis', value: averageRating === '—' ? '—' : `${averageRating} / 5`, change: `${feedbacks.length} įvertinimai` }, { label: 'Nukreipta į Google', value: googleRedirects.toString(), change: 'realūs paspaudimai' }].map((stat) => <div key={stat.label} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><p className="text-xs text-[#5f6368]">{stat.label}</p><div className="flex items-end justify-between mt-3"><span className="text-2xl font-extrabold">{stat.value}</span><span className="text-xs font-bold text-[#137333]">{stat.change}</span></div></div>)}</div>
-              <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><h2 className="font-bold text-lg">Vertinimų pasiskirstymas</h2><p className="text-sm text-[#5f6368] mt-1 mb-6">Realus gautų klientų įvertinimų skaičius</p>{ratingDistribution.map((row) => <div key={row.rating} className="flex items-center gap-3 mb-4 text-sm"><span className="w-28 text-[#5f6368]">{row.rating} žvaigždutės</span><div className="flex-1 h-2 bg-[#f1f3f4] rounded-full overflow-hidden"><div className={`h-full rounded-full ${row.rating >= 4 ? 'bg-[#34a853]' : row.rating === 3 ? 'bg-[#fbbc04]' : 'bg-[#ea4335]'}`} style={{ width: `${(row.count / maxRatingCount) * 100}%` }} /></div><span className="w-16 text-right font-semibold">{row.count} vnt.</span></div>)}</div>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-8"><div><span className="text-xs font-bold text-[#1a73e8] uppercase tracking-wider">DUOMENYS</span><h1 className="text-3xl font-extrabold mt-1">Analitika</h1><p className="text-sm text-[#5f6368] mt-1">Viso laikotarpio statistika, skaičiuojama duomenų bazėje.</p></div><span className="inline-flex items-center rounded-full border border-[#b7dfc1] bg-[#e6f4ea] px-3 py-1.5 text-xs font-bold text-[#137333]">Visas laikotarpis</span></div>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[{ label: 'Konversija į atsiliepimą', value: `${reviewConversion}%`, change: `${statsTotal} iš ${stats.total_qr_scans} nuskaitymų` }, { label: 'Teigiami vertinimai', value: `${positiveRate}%`, change: `${positiveFeedbacks} atsiliepimai virš slenksčio` }, { label: 'Atsiliepimų vidurkis', value: averageRating === '—' ? '—' : `${averageRating} / 5`, change: `${statsTotal} įvertinimai` }, { label: 'Nukreipta į Google', value: googleRedirects.toString(), change: 'realūs paspaudimai' }].map((stat) => <div key={stat.label} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><p className="text-xs text-[#5f6368]">{stat.label}</p><div className="flex items-end justify-between mt-3"><span className="text-2xl font-extrabold">{stat.value}</span><span className="text-xs font-bold text-[#137333]">{stat.change}</span></div></div>)}</div>
+              <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><h2 className="font-bold text-lg">Vertinimų pasiskirstymas</h2><p className="text-sm text-[#5f6368] mt-1 mb-6">Viso laikotarpio gautas realus klientų įvertinimų skaičius</p>{ratingDistribution.map((row) => <div key={row.rating} className="flex items-center gap-3 mb-4 text-sm"><span className="w-28 text-[#5f6368]">{row.rating} žvaigždutės</span><div className="flex-1 h-2 bg-[#f1f3f4] rounded-full overflow-hidden"><div className={`h-full rounded-full ${row.rating >= 4 ? 'bg-[#34a853]' : row.rating === 3 ? 'bg-[#fbbc04]' : 'bg-[#ea4335]'}`} style={{ width: `${(row.count / maxRatingCount) * 100}%` }} /></div><span className="w-16 text-right font-semibold">{row.count} vnt.</span></div>)}</div>
             </div>
           )}
 

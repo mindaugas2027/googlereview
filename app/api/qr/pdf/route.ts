@@ -1,43 +1,10 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { canAccessBusiness, requireServiceUser } from '@/lib/admin-auth'
 import { generatePrintReadyPdf, QR_TEMPLATE_FILENAME } from '@/lib/generatePdf'
 
 export const dynamic = 'force-dynamic'
-
-const ADMIN_EMAIL = 'mindaugas2027@gmail.com'
-
-type ServiceGuard =
-  | { ok: true; client: SupabaseClient; userId: string; userEmail: string }
-  | { ok: false; status: number; error: string }
-
-/** Patikrina Bearer token ir grąžina servisą pasiekiantį Supabase klientą (toks pat modelis kaip requireAdmin). */
-async function requireUser(request: NextRequest): Promise<ServiceGuard> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url || !serviceKey) {
-    return { ok: false, status: 500, error: 'Serverio konfigūracija nepilna — nerasti Supabase aplinkos kintamieji.' }
-  }
-
-  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-  if (!token) return { ok: false, status: 401, error: 'Unauthorized' }
-
-  const client = createClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-
-  try {
-    const { data: { user }, error } = await client.auth.getUser(token)
-    if (error || !user) return { ok: false, status: 401, error: 'Unauthorized' }
-    return { ok: true, client, userId: user.id, userEmail: user.email?.toLowerCase() ?? '' }
-  } catch (cause) {
-    console.error('[api/qr/pdf] Supabase Auth nepasiekiamas:', cause)
-    return { ok: false, status: 502, error: 'Nepavyko susisiekti su Supabase Auth tarnyba.' }
-  }
-}
 
 /** Sujungia aplikacijos origin (svetainės adresą), kad QR rodytų į viešą įvertinimo puslapį. */
 function resolveOrigin(request: NextRequest): string {
@@ -71,16 +38,14 @@ async function loadTemplate(request: NextRequest): Promise<Uint8Array> {
 }
 
 export async function GET(request: NextRequest) {
-  const guard = await requireUser(request)
+  const guard = await requireServiceUser(request)
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
   const { client, userId, userEmail } = guard
 
   try {
     // Kliento ID: savo QR — pagal nutylėjimą; admin peržiūroje (view_as) — ?business=<klientoId>
     const businessId = request.nextUrl.searchParams.get('business')?.trim() || userId
-    const isSelf = businessId === userId
-    const isAdmin = userEmail === ADMIN_EMAIL
-    if (!isSelf && !isAdmin) {
+    if (!canAccessBusiness(businessId, userId, userEmail)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
