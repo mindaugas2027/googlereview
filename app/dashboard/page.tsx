@@ -52,6 +52,7 @@ type DashboardPageId = 'overview' | 'feedback' | 'qr' | 'analytics' | 'locations
 
 const DASHBOARD_NAV_ITEMS: Array<{ id: DashboardPageId; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'overview', label: 'Apžvalga', icon: LayoutDashboard },
+  { id: 'feedback', label: 'Atsiliepimai', icon: MessageSquare },
   { id: 'qr', label: 'QR Kodai', icon: QrCode },
   { id: 'analytics', label: 'Analitika', icon: BarChart3 },
   { id: 'locations', label: 'Vietos', icon: MapPin },
