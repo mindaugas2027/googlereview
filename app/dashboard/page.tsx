@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
-  BarChart3, Eye, Globe2, LayoutDashboard, LogOut, MapPin,
+  BarChart3, Download, Eye, Globe2, LayoutDashboard, LogOut, MapPin,
   Menu, MessageSquare, QrCode, ScanLine, Send, Settings, Sparkles, Star, X, Zap, Loader2, ArrowUpRight
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -98,6 +98,8 @@ export default function DashboardPage() {
   const [feedbackSort, setFeedbackSort] = useState<'newest' | 'oldest' | 'rating-high' | 'rating-low'>('newest');
   const [feedbackRatingFilter, setFeedbackRatingFilter] = useState<number | null>(null);
   const [monthlyGoal, setMonthlyGoal] = useState(60);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const [business, setBusiness] = useState({
     name: '',
@@ -461,6 +463,39 @@ export default function DashboardPage() {
     await navigator.clipboard?.writeText(reviewUrl);
   };
 
+  const downloadPrintPdf = async () => {
+    if (!reviewUrl || pdfDownloading) return;
+    setPdfDownloading(true);
+    setPdfError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      const response = await fetch(`/api/qr/pdf${viewAsId ? `?business=${encodeURIComponent(viewAsId)}` : ''}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || `Nepavyko sugeneruoti PDF (${response.status}).`);
+      }
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = downloadUrl;
+      anchor.download = 'getreview-qr-spaudai.pdf';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(downloadUrl);
+    } catch (cause) {
+      setPdfError(cause instanceof Error ? cause.message : 'Nepavyko atsisiųsti PDF.');
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f8fafd] flex items-center justify-center text-[#202124]">
@@ -565,8 +600,16 @@ export default function DashboardPage() {
               <span className="text-xs font-bold text-[#1a73e8] uppercase tracking-wider">KLIENTŲ SRAUTAS</span>
               <h1 className="text-3xl font-extrabold mt-1 mb-2">QR Kodai</h1>
               <p className="text-sm text-[#5f6368] mb-6">Leiskite klientams greitai įvertinti jūsų paslaugą telefonu.</p>
-              <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm grid md:grid-cols-[180px_1fr] gap-7 items-center">
-                {business.google_review_url ? <div className="bg-white border border-[#dadce0] rounded-xl p-3 w-fit"><QRCodeSVG value={reviewUrl} size={150} includeMargin /></div> : <div className="h-[180px] w-[180px] rounded-xl border border-dashed border-[#b7bdc4] bg-[#f8fafd] grid place-items-center text-center p-4"><span className="text-xs font-semibold text-[#80868b]">QR kodas atsiras čia</span></div>}
+              <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm grid md:grid-cols-[240px_1fr] gap-7 items-center">
+                {business.google_review_url ? (
+                  <div className="flex flex-col items-center">
+                    <div className="bg-white border border-[#dadce0] rounded-xl p-3 w-fit"><QRCodeSVG value={reviewUrl} size={150} includeMargin /></div>
+                    <button onClick={downloadPrintPdf} disabled={pdfDownloading} className="mt-3 w-full bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl py-2.5 px-3 text-sm font-semibold flex items-center justify-center gap-2">
+                      {pdfDownloading ? (<><Loader2 size={15} className="animate-spin" /> Generuojama…</>) : (<><Download size={15} /> Atsisiųsti spaudai (PDF)</>)}
+                    </button>
+                    {pdfError && <p className="text-xs text-[#c5221f] mt-2 text-center">{pdfError}</p>}
+                  </div>
+                ) : <div className="h-[180px] w-[180px] rounded-xl border border-dashed border-[#b7bdc4] bg-[#f8fafd] grid place-items-center text-center p-4"><span className="text-xs font-semibold text-[#80868b]">QR kodas atsiras čia</span></div>}
                 <div><h2 className="font-bold text-lg mb-2">Jūsų klientų vertinimo QR kodas</h2><p className="text-sm text-[#5f6368] leading-relaxed mb-4">Šis QR kodas priklauso jūsų įmonei ir naudoja jūsų „Vietos“ skiltyje įvestą Google Review URL. Klientas nuskenuoja kodą, pasirenka žvaigždutes ir gauna atitinkamą pasiūlymą.</p>{!business.google_review_url ? <p className="text-sm text-[#b06000] bg-[#fef7e0] border border-[#f9df96] rounded-lg p-3">Pirmiausia pridėkite Google Review URL skiltyje „Vietos“.</p> : <button onClick={() => navigator.clipboard?.writeText(reviewUrl)} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white px-4 py-2.5 rounded-xl text-sm font-semibold">Kopijuoti kliento nuorodą</button>}</div>
               </div>
             </div>
