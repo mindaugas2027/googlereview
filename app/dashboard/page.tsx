@@ -143,11 +143,16 @@ export default function DashboardPage() {
     [1, feedbackPage - 1, feedbackPage, feedbackPage + 1, totalFeedbackPages]
       .filter((value) => value >= 1 && value <= totalFeedbackPages),
   )).sort((first, second) => first - second);
+  // Grafikas naudoja kalendorines savaites (nuo pirmadienio 00:00 vietos laiku), o ne
+  // slankų 7 dienų langą — kitaip pirmadienį „Šios savaitės" stulpelyje dar liktų
+  // praeitos savaitės dienos (pvz., penktadienis).
+  const chartNow = new Date();
+  // Pirmadienis→0, …, sekmadienis→6 (JS getDay(): sekmadienis=0)
+  const chartWeekStart = new Date(chartNow.getFullYear(), chartNow.getMonth(), chartNow.getDate() - ((chartNow.getDay() + 6) % 7));
   const feedbacksByWeek = Array.from({ length: 7 }, (_, index) => {
     const weekAge = 6 - index;
-    // eslint-disable-next-line react-hooks/purity -- savaitės laiko langas skaičiuojamas renderio metu pagal dabartinę datą
-    const intervalEnd = Date.now() - weekAge * 7 * 24 * 60 * 60 * 1000;
-    const intervalStart = intervalEnd - 7 * 24 * 60 * 60 * 1000;
+    const intervalStart = new Date(chartWeekStart.getFullYear(), chartWeekStart.getMonth(), chartWeekStart.getDate() - weekAge * 7).getTime();
+    const intervalEnd = new Date(chartWeekStart.getFullYear(), chartWeekStart.getMonth(), chartWeekStart.getDate() - (weekAge - 1) * 7).getTime();
     return recentFeedbackDates.filter((createdAt) => {
       const createdAtTime = new Date(createdAt).getTime();
       return createdAtTime >= intervalStart && createdAtTime < intervalEnd;
