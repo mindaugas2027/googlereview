@@ -56,9 +56,11 @@ export async function GET(request: NextRequest) {
       .order('created_at')
     let qrCodes = (codes || []) as unknown as QrCodeRow[]
 
-    // Ištisinumas: jei vartotojas dar neturi nė vieno QR kodo (seni vartotojai
-    // prieš atnaujinimą turėjo vieną), sukuriame numatytąjį — elgsena nesikeičia.
-    if (qrCodes.length === 0) {
+    // Ištisinumas, kaip pradinėje sistemoje: vietos nuorodą įvedus (arba Verslo
+    // plano vartotojui) pirmasis QR kodas sukuriamas automatiškai — vartotojui
+    // nieko daryti nereikia. Kol Google Review nuorodos nėra, QR sąrašas tuščias
+    // (QR tab'as ragina pridėti nuorodą skiltyje „Vietos“).
+    if (qrCodes.length === 0 && (plan.usesLocations || (typeof metadata.google_review_url === 'string' && metadata.google_review_url.trim().length > 0))) {
       const { data: created } = await client
         .from('qr_codes')
         .insert({ user_id: userId, label: 'Pagrindinis QR kodas', location_id: locations[0]?.id ?? null })
