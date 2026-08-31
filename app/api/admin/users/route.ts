@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin, getTrialEndMs, DAY_MS } from '@/lib/admin-auth'
+import { requireAdmin, getTrialEndMs, DAY_MS, ADMIN_EMAIL } from '@/lib/admin-auth'
 import { readStatsForUsers, EMPTY_STATS } from '@/lib/stats'
 
 export async function GET(request: NextRequest) {
@@ -14,18 +14,21 @@ export async function GET(request: NextRequest) {
     while (hasMore) {
       const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      users.push(...data.users.map((user) => ({
-        id: user.id,
-        email: user.email,
-        created_at: user.created_at,
-        last_sign_in_at: user.last_sign_in_at,
-        company_name: user.user_metadata?.company_name || 'Nenurodyta',
-        first_name: user.user_metadata?.first_name || 'Nenurodyta',
-        trial_started_at: user.user_metadata?.trial_started_at || null,
-        trial_end: user.user_metadata?.trial_end || null,
-        trial_days: user.user_metadata?.trial_days || null,
-        monthly_goal: user.user_metadata?.monthly_goal || 60,
-      })))
+      // Admino paskyra sąraše nerodoma — ji nėra klientas (admin, jei reikia, susikuria atskirą vartotoją).
+      users.push(...data.users
+        .filter((user) => user.email?.toLowerCase() !== ADMIN_EMAIL)
+        .map((user) => ({
+          id: user.id,
+          email: user.email,
+          created_at: user.created_at,
+          last_sign_in_at: user.last_sign_in_at,
+          company_name: user.user_metadata?.company_name || 'Nenurodyta',
+          first_name: user.user_metadata?.first_name || 'Nenurodyta',
+          trial_started_at: user.user_metadata?.trial_started_at || null,
+          trial_end: user.user_metadata?.trial_end || null,
+          trial_days: user.user_metadata?.trial_days || null,
+          monthly_goal: user.user_metadata?.monthly_goal || 60,
+        })))
       hasMore = data.users.length === 1000
       page += 1
     }
