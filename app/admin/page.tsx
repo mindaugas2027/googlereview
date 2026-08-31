@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_EMAIL, getTrialDaysLeft } from '@/lib/admin-auth'
-import { CreditCard, Eye, ExternalLink, Loader2, LogOut, Search, Settings, Sparkles, Users, X } from 'lucide-react'
+import { Eye, ExternalLink, Loader2, LogOut, Search, Settings, Sparkles, Users, X } from 'lucide-react'
 type AdminUser = {
   id: string
   email?: string
@@ -97,7 +97,6 @@ export default function AdminPage() {
       if (action === 'extend_trial') {
         const targetDate = opts?.endDate
           ? new Date(`${opts.endDate}T23:59:59`).toLocaleDateString('lt-LT')
-          // eslint-disable-next-line react-hooks/purity -- event handler'yje apskaičiuojam parodyti datą vartotojui
           : new Date(Date.now() + (opts?.days ?? 30) * 24 * 60 * 60 * 1000).toLocaleDateString('lt-LT')
         setActionMessage(`${user.company_name} prenumerata pratęsta iki ${targetDate}.`)
       } else if (action === 'expire_trial') {
@@ -197,7 +196,7 @@ export default function AdminPage() {
           </>
         )}
 
-        {tab === 'payments' && (
+        {tab === 'users' && (
           <>
             <div className="grid sm:grid-cols-3 gap-4 mb-6">
               <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Aktyvios prenumeratos</p><strong className="text-3xl block mt-2">{users.filter((user) => getTrialDaysLeft(user) > 0).length}</strong></div>

@@ -504,7 +504,6 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user?.id || viewAsId) return;
     void fetchStats(user.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- kraunama kai pasikeičia vartotojas
   }, [user?.id, viewAsId]);
 
   /** Lengvų apžvalgos duomenų (savaitės grafiko dati + mėnesio kiekis) atnaujinimas. */
