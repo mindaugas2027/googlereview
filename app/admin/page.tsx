@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_EMAIL, getTrialDaysLeft } from '@/lib/admin-auth'
-import { Eye, ExternalLink, Loader2, LogOut, Search, Settings, Sparkles, Users, X } from 'lucide-react'
+import { CreditCard, ExternalLink, Loader2, LogOut, Search, Settings, Sparkles, Users, X } from 'lucide-react'
 type AdminUser = {
   id: string
   email?: string
@@ -185,7 +185,7 @@ export default function AdminPage() {
                       </div>
                                             <div className="flex flex-wrap gap-2">
                         <button onClick={() => router.push(`/dashboard?view_as=${user.id}`)} className="border border-[#c6dafc] bg-[#e8f0fe] text-[#1967d2] hover:bg-[#dbe7fb] rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2"><ExternalLink size={15} /> Dashboard</button>
-                        <button onClick={() => { setSelectedUser(user); setExtendDate(formatDateForInput(user.trial_end)); setExtendDays(0); }} className="bg-[#1a73e8] text-white rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2"><Eye size={16} /> Peržiūrėti</button>
+                        <button onClick={() => { setSelectedUser(user); setExtendDate(formatDateForInput(user.trial_end)); setExtendDays(0); }} className="bg-[#1a73e8] text-white rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2"><CreditCard size={16} /> Prenumeratos</button>
                       </div>
                     </div>
                   )
