@@ -140,9 +140,9 @@ export default function Home() {
           </div>
           <div className="grid md:grid-cols-3 gap-5">
             {[
-              { name: 'Startas', price: '19', description: 'Mažoms įmonėms ir individualiems meistrams.', features: ['1 vieta / adresas', 'Neriboti QR nuskaitymai', 'Pagrindinė analitika'] },
-              { name: 'Pro Verslas', price: '39', description: 'Augantiems verslams su komanda.', features: ['Iki 5 vietų', 'Google Review integracija', 'Išplėstinė analitika'], popular: true },
-              { name: 'Maksimalus', price: '79', description: 'Tinklams ir didelėms įmonėms.', features: ['Neribotas vietų skaičius', 'API prieiga', 'Asmeninis vadybininkas'] },
+              { name: 'Startas', price: '14,99', description: 'Mažoms įmonėms ir individualiems meistrams.', features: ['1 vieta / adresas', '1 QR kodas', 'Neriboti QR nuskaitymai'] },
+              { name: 'Pro', price: '19,99', description: 'Kavinėms, restoranams ir komandoms.', features: ['1 vieta / adresas', 'Neriboti QR kodai (stalams, personalui)', 'QR statistika: kuris kodas surenka daugiausia gerų atsiliepimų'], popular: true },
+              { name: 'Verslas', price: '34,99', description: 'Tinklams ir didelėms įmonėms.', features: ['Iki 5 vietų', 'Neriboti QR kodai', 'QR kodų susiejimas su vietomis'] },
             ].map((plan) => (
               <div key={plan.name} className={`relative bg-white border rounded-2xl p-6 shadow-sm ${plan.popular ? 'border-[#1a73e8] shadow-lg shadow-blue-500/10' : 'border-[#dadce0]'}`}>
                 {plan.popular && <span className="absolute -top-3 left-6 bg-[#1a73e8] text-xs font-bold px-3 py-1 rounded-full text-white">Populiariausias</span>}

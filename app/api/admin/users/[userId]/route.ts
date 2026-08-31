@@ -69,7 +69,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       const allowedKeys = [
         'company_name', 'first_name', 'phone',
         'google_review_url', 'google_min_rating', 'logo_url', 'monthly_goal',
-        'facebook_url', 'instagram_url', 'linkedin_url',
+        'facebook_url', 'instagram_url', 'linkedin_url', 'plan_id',
       ]
       const updates: Record<string, unknown> = {}
       for (const key of allowedKeys) {

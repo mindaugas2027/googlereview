@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
           trial_started_at: user.user_metadata?.trial_started_at || null,
           trial_end: user.user_metadata?.trial_end || null,
           trial_days: user.user_metadata?.trial_days || null,
+          plan_id: user.user_metadata?.plan_id || null,
           monthly_goal: user.user_metadata?.monthly_goal || 60,
         })))
       hasMore = data.users.length === 1000
@@ -66,7 +67,7 @@ export async function PATCH(request: NextRequest) {
   const adminClient = guard.client
 
   try {
-    const body = await request.json() as { userId?: string; action?: 'extend_trial' | 'expire_trial' | 'delete_user'; days?: number; endDate?: string }
+    const body = await request.json() as { userId?: string; action?: 'extend_trial' | 'expire_trial' | 'delete_user' | 'set_plan'; days?: number; endDate?: string; planId?: string }
     if (!body.userId || !body.action) return NextResponse.json({ error: 'Missing action' }, { status: 400 })
     const { data: target, error: getError } = await adminClient.auth.admin.getUserById(body.userId)
     if (getError || !target.user) return NextResponse.json({ error: getError?.message || 'User not found' }, { status: 404 })
@@ -84,6 +85,18 @@ export async function PATCH(request: NextRequest) {
       })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ ok: true })
+    }
+
+    if (body.action === 'set_plan') {
+      const planId = (body as { planId?: string }).planId || ''
+      if (!['startas', 'pro', 'verslas'].includes(planId)) {
+        return NextResponse.json({ error: 'Nežinomas planas.' }, { status: 400 })
+      }
+      const { error } = await adminClient.auth.admin.updateUserById(body.userId, {
+        user_metadata: { ...target.user.user_metadata, plan_id: planId },
+      })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true, plan_id: planId })
     }
 
     // extend_trial: arba nustatoma konkreti galiojimo iki data (endDate), arba pridedama dienų (days)

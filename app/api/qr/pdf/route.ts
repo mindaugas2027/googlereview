@@ -49,23 +49,43 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Konkretus QR kodas (?qr=<id>) — naujojo sąrašo kodams
+    const qrId = request.nextUrl.searchParams.get('qr')?.trim() || ''
+
     const { data: target, error: targetError } = await client.auth.admin.getUserById(businessId)
     if (targetError || !target.user) {
       return NextResponse.json({ error: 'Naudotojas nerastas.' }, { status: 404 })
     }
 
-    const meta = (target.user.user_metadata || {}) as Record<string, unknown>
-    const googleReviewUrl = typeof meta.google_review_url === 'string' && meta.google_review_url.trim()
-      ? normalizeGoogleReviewUrl(meta.google_review_url)
-      : ''
-    if (!googleReviewUrl) {
-      return NextResponse.json({ error: 'Pirmiausia pridėkite Google Review URL skiltyje „Vietos".' }, { status: 400 })
-    }
-    const logoUrl = typeof meta.logo_url === 'string' ? meta.logo_url : ''
-    const threshold = Number(meta.google_min_rating) || 4
+    let reviewUrl: string
+    if (qrId) {
+      // QR kodas turi priklausyti tam pačiam vartotojui
+      const { data: qrRow } = await client
+        .from('qr_codes')
+        .select('id')
+        .eq('id', qrId)
+        .eq('user_id', target.user.id)
+        .single()
+      if (!qrRow) {
+        return NextResponse.json({ error: 'QR kodas nerastas.' }, { status: 404 })
+      }
+      // Naujojo formato URL: konfigūraciją (Google URL, slenkstį, logotipą) /review
+      // puslapis pasiima per /api/qr/resolve — nuoroda trumpa ir stabili.
+      reviewUrl = `${resolveOrigin(request)}/review?business=${encodeURIComponent(target.user.id)}&qr=${encodeURIComponent(qrId)}`
+    } else {
+      const meta = (target.user.user_metadata || {}) as Record<string, unknown>
+      const googleReviewUrl = typeof meta.google_review_url === 'string' && meta.google_review_url.trim()
+        ? normalizeGoogleReviewUrl(meta.google_review_url)
+        : ''
+      if (!googleReviewUrl) {
+        return NextResponse.json({ error: 'Pirmiausia pridėkite Google Review URL skiltyje „Vietos".' }, { status: 400 })
+      }
+      const logoUrl = typeof meta.logo_url === 'string' ? meta.logo_url : ''
+      const threshold = Number(meta.google_min_rating) || 4
 
-    // URL identiškas tam, kurį koduoja valdymo panelės QR kodas (app/dashboard/page.tsx — reviewUrl)
-    const reviewUrl = `${resolveOrigin(request)}/review?business=${encodeURIComponent(target.user.id)}&google=${encodeURIComponent(googleReviewUrl)}&threshold=${threshold}&logo=${encodeURIComponent(logoUrl)}`
+      // URL identiškas tam, kurį koduoja valdymo panelės QR kodas (app/dashboard/page.tsx — reviewUrl)
+      reviewUrl = `${resolveOrigin(request)}/review?business=${encodeURIComponent(target.user.id)}&google=${encodeURIComponent(googleReviewUrl)}&threshold=${threshold}&logo=${encodeURIComponent(logoUrl)}`
+    }
 
     const templatePdf = await loadTemplate(request)
     const pdfBytes = await generatePrintReadyPdf({ templatePdf, reviewUrl })

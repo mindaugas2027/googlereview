@@ -46,6 +46,11 @@ function createServiceClient(): SupabaseClient | null {
   })
 }
 
+/** Viešai prieinamas (anon) servisines teises turintis klientas — /review QR resolvoliutimui. */
+export function getServiceClient(): SupabaseClient | null {
+  return createServiceClient()
+}
+
 function missingConfigError(): string {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY

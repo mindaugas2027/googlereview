@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_EMAIL, getTrialDaysLeft } from '@/lib/admin-auth'
+import { PLAN_LIST } from '@/lib/plans'
 import { CreditCard, ExternalLink, Loader2, LogOut, Search, Settings, Sparkles, Users, X } from 'lucide-react'
 type AdminUser = {
   id: string
@@ -15,6 +16,7 @@ type AdminUser = {
   trial_started_at?: string | null
   trial_end?: string | null
   trial_days?: number | null
+  plan_id?: string | null
   monthly_goal?: number
   feedback_count: number
   google_redirects: number
@@ -31,8 +33,27 @@ export default function AdminPage() {
   const [tab, setTab] = useState<'users' | 'settings'>('users')
   const [error, setError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
-    const [extendDays, setExtendDays] = useState(30)
+  const [extendDays, setExtendDays] = useState(30)
   const [extendDate, setExtendDate] = useState('')
+  const [planSaving, setPlanSaving] = useState(false)
+
+  const changePlan = async (user: AdminUser, planId: string) => {
+    setPlanSaving(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const response = await fetch('/api/admin/users', { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, action: 'set_plan', planId }) })
+      const res = await response.json().catch(() => null)
+      if (!response.ok) { setError(res?.error || `Plano pakeisti nepavyko (${response.status}).`); return }
+      const plan = PLAN_LIST.find((item) => item.id === planId)
+      setActionMessage(`${user.company_name} planas pakeistas į „${plan?.name}“ (${plan?.priceLabel}).`)
+      await loadUsers()
+    } catch {
+      setError('Nepavyko pasiekti serverio. Patikrinkite interneto ryšį.')
+    } finally {
+      setPlanSaving(false)
+    }
+  }
 
   const formatDateForInput = (dateStr?: string | null) => {
     if (!dateStr) return ''
@@ -63,7 +84,7 @@ export default function AdminPage() {
     }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- pradinis vartotojų sąrašo įkėlimas prisijungus
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- pradinis vartotojų sąrašo įkėlimas prisijungus
   useEffect(() => { loadUsers() }, [])
 
   // Saugos laikmatis: jei duomenys neatsako per 20 s, rodome klaidą vietoj amžino sukimosi ratuko
@@ -231,6 +252,26 @@ export default function AdminPage() {
                     <span className="text-xs text-[#5f6368]">Užsiregistravo</span>
                     <strong className="block text-xl mt-1">{new Date(selectedUser.created_at).toLocaleDateString('lt-LT')}</strong>
                   </div>
+                </div>
+
+                <div className="rounded-xl border border-[#dadce0] p-4 bg-white mb-4">
+                  <p className="font-bold text-sm text-[#1a73e8] mb-3">Planas</p>
+                  <div className="grid sm:grid-cols-3 gap-2">
+                    {PLAN_LIST.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => changePlan(selectedUser, item.id)}
+                        disabled={planSaving || (selectedUser.plan_id || 'startas') === item.id}
+                        className={`rounded-xl border p-3 text-left transition ${selectedUser.plan_id || 'startas' === item.id ? 'border-[#1a73e8] bg-[#e8f0fe]' : 'border-[#dadce0] hover:border-[#1a73e8]'} disabled:opacity-70 disabled:cursor-default`}
+                      >
+                        <span className="block text-sm font-bold">{item.name}</span>
+                        <span className="block text-xs text-[#5f6368] mt-0.5">{item.priceLabel} / mėn.</span>
+                        <span className="block text-[11px] text-[#80868b] mt-1">{item.maxQrCodes === -1 ? 'Neriboti QR' : `${item.maxQrCodes} QR`} · {item.maxLocations === 1 ? '1 vieta' : `iki ${item.maxLocations} vietų`}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {planSaving && <p className="text-xs text-[#1a73e8] mt-3">Taikoma…</p>}
+                  <p className="text-[11px] text-[#80868b] mt-2">Planas nustato QR kodų ir vietų limitus kliento valdymo panelėje.</p>
                 </div>
 
                 <div className="rounded-xl border border-[#dadce0] p-4 bg-[#f8fafd]">
