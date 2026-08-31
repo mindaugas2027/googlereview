@@ -17,6 +17,15 @@ export async function GET(request: NextRequest) {
   const { client, userId, plan, metadata } = guard
 
   try {
+    // „Vietų" sistema tik Verslas planui. Startas/Pro naudoja senąją elgseną:
+    // viena Google Review nuoroda metadata.google_review_url (Vietos tab'e).
+    if (!plan.usesLocations) {
+      return NextResponse.json({
+        locations: [],
+        limits: { plan: plan.id, plan_name: plan.name, max_locations: plan.maxLocations, current: 0 },
+      })
+    }
+
     const { data, error } = await client
       .from('locations')
       .select('*')
@@ -26,8 +35,8 @@ export async function GET(request: NextRequest) {
 
     let locations = (data || []) as LocationRow[]
 
-    // Migracijos kelias: seni vartotojai turi tik metadata.google_review_url —
-    // sukuriame numatytąją vietą, kad sistema veiktų be papildomų veiksmų.
+    // Migracijos kelias: seni VERSLO plano vartotojai gali turėti tik
+    // metadata.google_review_url — sukuriame numatytąją vietą.
     if (locations.length === 0 && typeof metadata.google_review_url === 'string' && metadata.google_review_url.trim()) {
       const { data: created, error: insertError } = await client
         .from('locations')
@@ -46,13 +55,19 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** POST /api/locations — nauja vieta (tikrinamas plano limitas). */
+/** POST /api/locations — nauja vieta (tik Verslas planas, tikrinamas limitas). */
 export async function POST(request: NextRequest) {
   const guard = await resolveTargetUser(request)
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
   const { client, userId, plan } = guard
 
   try {
+    if (!plan.usesLocations) {
+      return NextResponse.json({
+        error: 'Jūsų planas nenaudoja vietų valdymo. Google Review nuoroda nustatoma skiltyje „Vietos“.',
+      }, { status: 403 })
+    }
+
     const body = await request.json() as { name?: string; address?: string; google_review_url?: string }
     const name = (body.name || '').trim() || 'Pagrindinė vieta'
     const address = (body.address || '').trim()
@@ -90,13 +105,17 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** PATCH /api/locations — vietos redagavimas. */
+/** PATCH /api/locations — vietos redagavimas (tik Verslas planas). */
 export async function PATCH(request: NextRequest) {
   const guard = await resolveTargetUser(request)
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
-  const { client, userId } = guard
+  const { client, userId, plan } = guard
 
   try {
+    if (!plan.usesLocations) {
+      return NextResponse.json({ error: 'Jūsų planas nenaudoja vietų valdymo.' }, { status: 403 })
+    }
+
     const body = await request.json() as { id?: string; name?: string; address?: string; google_review_url?: string }
     if (!body.id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
@@ -131,9 +150,13 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const guard = await resolveTargetUser(request)
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
-  const { client, userId } = guard
+  const { client, userId, plan } = guard
 
   try {
+    if (!plan.usesLocations) {
+      return NextResponse.json({ error: 'Jūsų planas nenaudoja vietų valdymo.' }, { status: 403 })
+    }
+
     const body = await request.json() as { id?: string }
     if (!body.id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
     const { error } = await client

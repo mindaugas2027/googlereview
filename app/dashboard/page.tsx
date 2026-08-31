@@ -542,6 +542,24 @@ export default function DashboardPage() {
     await supabase.auth.updateUser({ data: { google_min_rating: value } });
   };
 
+  // Senoji „Vietos" elgsena (Startas/Pro planai): viena Google Review nuoroda,
+  // saugoma metadata.google_review_url. Naujoji vietų sistema — tik Verslas planui.
+  const saveGoogleReviewUrl = async () => {
+    if (!business.google_review_url.trim()) {
+      setProfileMessage('Įrašykite Google Review nuorodą.');
+      return;
+    }
+    const url = normalizeGoogleReviewUrl(business.google_review_url);
+    setBusiness({ ...business, google_review_url: url });
+    if (viewAsId) {
+      const result = await adminApiRequest('PATCH', { action: 'update_metadata', metadata: { google_review_url: url } });
+      setProfileMessage(result.error ? result.error.message : 'Google Review nuoroda išsaugota.');
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ data: { google_review_url: url } });
+    setProfileMessage(error ? error.message : 'Google Review nuoroda išsaugota.');
+  };
+
   const saveMonthlyGoal = async (value: number) => {
     const safeValue = Math.max(1, Math.min(10000, value || 1));
     setMonthlyGoal(safeValue);
@@ -937,7 +955,7 @@ export default function DashboardPage() {
               <h1 className="text-3xl font-extrabold mt-1 mb-2">QR Kodai</h1>
               <p className="text-sm text-[#5f6368] mb-2">Leiskite klientams greitai įvertinti jūsų paslaugą telefonu.</p>
               <p className="text-xs text-[#5f6368] mb-5">
-                Planas „{plan.name}“: {plan.maxQrCodes < 0 ? 'neriboti QR kodai' : `${qrCodes.length} iš ${plan.maxQrCodes} QR kodų`}{plan.maxLocations < 0 ? ' · neribotos vietos' : ` · iki ${plan.maxLocations} vietų`}.
+                Planas „{plan.name}“: {plan.maxQrCodes < 0 ? 'neriboti QR kodai' : `${qrCodes.length} iš ${plan.maxQrCodes} QR kodų`}{plan.usesLocations && ` · iki ${plan.maxLocations} vietų`}.
               </p>
               {qrActionError && <div className="bg-[#fce8e6] border border-[#f5b7b1] text-[#c5221f] rounded-xl p-3 text-sm mb-5">{qrActionError}</div>}
               {qrDataLoading && qrCodes.length === 0 ? (
@@ -949,10 +967,12 @@ export default function DashboardPage() {
                       <h2 className="font-bold mb-4 flex items-center gap-2"><Plus size={17} className="text-[#1a73e8]" /> Pridėti naują QR kodą</h2>
                       <div className="flex flex-col sm:flex-row gap-3">
                         <input type="text" placeholder="Pavadinimas, pvz. Stalas 1" value={newQrLabel} onChange={(event) => setNewQrLabel(event.target.value)} className="min-w-0 flex-1 bg-white border border-[#dadce0] rounded-xl p-3 text-sm text-[#202124] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]" />
-                        <select value={newQrLocationId} onChange={(event) => setNewQrLocationId(event.target.value)} className="bg-white border border-[#dadce0] rounded-xl px-3 py-3 text-sm text-[#3c4043]" aria-label="Susieti su vieta">
-                          <option value="">Be vietos</option>
-                          {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-                        </select>
+                        {plan.usesLocations && locations.length > 0 && (
+                          <select value={newQrLocationId} onChange={(event) => setNewQrLocationId(event.target.value)} className="bg-white border border-[#dadce0] rounded-xl px-3 py-3 text-sm text-[#3c4043]" aria-label="Susieti su vieta">
+                            <option value="">Be vietos</option>
+                            {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                          </select>
+                        )}
                         <button onClick={createQrCode} disabled={creatingQr || (qrLimits !== null && qrLimits.max_qr >= 0 && qrCodes.length >= qrLimits.max_qr)} className="bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl px-5 py-3 text-sm font-semibold whitespace-nowrap">
                           {creatingQr ? 'Kuriama…' : 'Sukurti QR kodą'}
                         </button>
@@ -982,7 +1002,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <button onClick={() => navigator.clipboard?.writeText(reviewUrlForQr(code.id))} className="bg-[#f1f3f4] hover:bg-[#e8eaed] text-[#3c4043] rounded-xl px-3.5 py-2 text-xs font-semibold">Kopijuoti nuorodą</button>
-                            {locations.length > 0 && (
+                            {plan.usesLocations && locations.length > 0 && (
                               <select value={code.location_id || ''} onChange={(event) => updateQrCodeLocation(code.id, event.target.value || null)} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2 text-xs font-semibold text-[#3c4043]" aria-label="Keisti vietą">
                                 <option value="">Susieti su vieta…</option>
                                 {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
@@ -1097,6 +1117,7 @@ export default function DashboardPage() {
           )}
 
           {page === 'locations' && (
+            plan.usesLocations ? (
             <div className="max-w-3xl">
               <h1 className="text-3xl font-extrabold text-[#202124] mb-2">Vietos</h1>
               <p className="text-sm text-[#5f6368] mb-2">Nustatykite, kur klientai bus nukreipiami po gero įvertinimo. QR kodai gali būti susieti su vietomis.</p>
@@ -1155,7 +1176,21 @@ export default function DashboardPage() {
                 </>
               )}
             </div>
-          )}
+            ) : (
+            <div>
+              <h1 className="text-3xl font-extrabold text-[#202124] mb-2">Vietos</h1>
+              <p className="text-sm text-[#5f6368] mb-6">Nustatykite, kur klientai bus nukreipiami po gero įvertinimo.</p>
+              <div className="bg-white border border-[#dadce0] rounded-2xl p-6 max-w-2xl shadow-sm">
+                <div className="flex items-center gap-3 mb-5"><span className="h-10 w-10 rounded-xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center"><Globe2 size={19} /></span><div><h2 className="font-bold">Nukreipimo nuoroda</h2><p className="text-xs text-[#5f6368] mt-1">Po gero įvertinimo klientas bus nukreiptas į šią nuorodą.</p></div></div>
+                <label className="block text-xs font-semibold text-[#5f6368] mb-2" htmlFor="google-review-url">Google Review URL</label>
+                <input id="google-review-url" type="url" placeholder="https://g.page/r/.../review" value={business.google_review_url} onChange={(e) => setBusiness({ ...business, google_review_url: e.target.value })} className="w-full bg-white border border-[#dadce0] rounded-xl p-3 text-sm text-[#202124] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]" />
+                <p className="text-xs text-[#80868b] mt-2">Naudokite pilną viešą nuorodą, pavyzdžiui: https://jusu-svetaine.lt</p>
+                <button onClick={saveGoogleReviewUrl} className="mt-5 bg-[#1a73e8] hover:bg-[#1769d1] text-white px-4 py-2.5 rounded-xl text-sm font-semibold">Išsaugoti nuorodą</button>
+                <p className="text-xs text-[#80868b] mt-3">Ši nuoroda naudojama visiems jūsų QR kodams. „Verslas“ planas leidžia valdyti iki 5 atskirų vietų su savo nuorodomis.</p>
+                {profileMessage && <p className="text-sm text-[#137333] mt-4">{profileMessage}</p>}
+              </div>
+              </div>
+            ))}
 
           {page === 'settings' && (
             <div>

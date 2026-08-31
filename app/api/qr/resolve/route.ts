@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServiceClient } from '@/lib/admin-auth'
 import { normalizeGoogleReviewUrl } from '@/lib/api-helpers'
+import { getPlan } from '@/lib/plans'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,10 +49,14 @@ export async function GET(request: NextRequest) {
       qr = (data || null) as ResolveRow | null
     }
 
-    // Atsarginė nuoroda: pirma vartotojo vieta
+    // Vietų sistema tik Verslas planui — kitiems planams Google URL visada
+    // imamas iš metadata (sena „Vietos“ tab'ą elgsena), vietos ignoruojamos.
+    const usesLocations = getPlan(metadata.plan_id).usesLocations
+
+    // Atsarginė nuoroda: pirma vartotojo vieta (tik vietų sistemai)
     let firstLocationUrl = ''
     let firstLocationId: string | null = null
-    if (qrId) {
+    if (qrId && usesLocations) {
       const { data: locationRows } = await client
         .from('locations')
         .select('id, google_review_url')
@@ -63,7 +68,7 @@ export async function GET(request: NextRequest) {
     }
 
     const googleReviewUrl = normalizeGoogleReviewUrl(
-      qr?.locations?.google_review_url || firstLocationUrl || metadata.google_review_url,
+      (usesLocations ? qr?.locations?.google_review_url || firstLocationUrl : '') || metadata.google_review_url,
     )
 
     // Nuskaitymo fiksavimas (su QR / vietos nuorodomis, kai žinomos)

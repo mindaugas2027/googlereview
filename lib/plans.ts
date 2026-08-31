@@ -18,6 +18,12 @@ export type PlanDefinition = {
   maxLocations: number;
   /** Didžiausias leistinas QR kodų skaičius (-1 = neribota). */
   maxQrCodes: number;
+  /**
+   * Ar planas naudoja naująją vietų sistemą (atSKIrtos vietos su savo Google
+   * nuorodomis ir QR susiejimu). Planams be jos „Vietos“ tab'as lieka senas —
+   * viena bendra Google Review nuoroda (metadata.google_review_url).
+   */
+  usesLocations: boolean;
   features: string[];
 };
 
@@ -30,6 +36,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     description: 'Mažoms įmonėms ir individualiems meistrams.',
     maxLocations: 1,
     maxQrCodes: 1,
+    usesLocations: false,
     features: [
       '1 vieta / adresas',
       '1 QR kodas',
@@ -47,6 +54,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     popular: true,
     maxLocations: 1,
     maxQrCodes: -1,
+    usesLocations: false,
     features: [
       'Neriboti QR kodai',
       'QR statistika pagal stalus / darbuotojus',
@@ -63,6 +71,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     description: 'Tinklams ir didelėms įmonėms.',
     maxLocations: 5,
     maxQrCodes: -1,
+    usesLocations: true,
     features: [
       'Visos Pro plano funkcijos',
       'Iki 5 vietų / adresų',

@@ -29,21 +29,24 @@ export async function GET(request: NextRequest) {
   try {
     const threshold = Number(metadata.google_min_rating) || 4
 
-    // Vietos (QR susiejimui ir atsarginiam Google URL)
-    const { data: locationsData } = await client
-      .from('locations')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at')
-    let locations = (locationsData || []) as LocationRow[]
-
-    // Migracijos kelias iš metadata.google_review_url
-    if (locations.length === 0 && typeof metadata.google_review_url === 'string' && metadata.google_review_url.trim()) {
-      const { data: created } = await client
+    // Vietos (QR susiejimui) — tik Verslas planui. Startas/Pro vietų neturi:
+    // jų QR kodai naudoja metadata.google_review_url (sena elgsena).
+    let locations: LocationRow[] = []
+    if (plan.usesLocations) {
+      const { data: locationsData } = await client
         .from('locations')
-        .insert({ user_id: userId, name: 'Pagrindinė vieta', address: '', google_review_url: metadata.google_review_url })
         .select('*')
-      if (created) locations = created as LocationRow[]
+        .eq('user_id', userId)
+        .order('created_at')
+      locations = (locationsData || []) as LocationRow[]
+
+      if (locations.length === 0 && typeof metadata.google_review_url === 'string' && metadata.google_review_url.trim()) {
+        const { data: created } = await client
+          .from('locations')
+          .insert({ user_id: userId, name: 'Pagrindinė vieta', address: '', google_review_url: metadata.google_review_url })
+          .select('*')
+        if (created) locations = created as LocationRow[]
+      }
     }
 
     const { data: codes } = await client
