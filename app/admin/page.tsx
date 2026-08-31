@@ -196,43 +196,6 @@ export default function AdminPage() {
           </>
         )}
 
-        {tab === 'users' && (
-          <>
-            <div className="grid sm:grid-cols-3 gap-4 mb-6">
-              <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Aktyvios prenumeratos</p><strong className="text-3xl block mt-2">{users.filter((user) => getTrialDaysLeft(user) > 0).length}</strong></div>
-              <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Pasibaigusios prenumeratos</p><strong className="text-3xl block mt-2">{users.filter((user) => getTrialDaysLeft(user) === 0).length}</strong></div>
-              <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Mokėjimai (Stripe)</p><strong className="text-xs block mt-3 text-[#b06000]">Stripe dar neprijungtas — kol kas valdomi bandomieji laikotarpiai.</strong></div>
-            </div>
-            <div className="bg-white border border-[#dadce0] rounded-2xl overflow-hidden">
-              <div className="p-5 border-b border-[#dadce0] flex items-center justify-between">
-                <h2 className="font-bold">Prenumeratų valdymas</h2>
-                <span className="text-xs text-[#5f6368]">{filteredUsers.length} rodomi</span>
-              </div>
-              <div className="divide-y divide-[#dadce0]">
-                {filteredUsers.map((user) => {
-                  const daysLeft = getTrialDaysLeft(user)
-                  return (
-                    <div key={user.id} className="p-5 flex flex-col lg:flex-row lg:items-center gap-4">
-                      <span className="h-10 w-10 rounded-xl bg-[#e8f0fe] text-[#1a73e8] grid place-items-center font-bold">{user.first_name[0] || user.company_name[0]}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold">{user.company_name}</div>
-                        <div className="text-sm text-[#5f6368]">{user.first_name} · {user.email}</div>
-                      </div>
-                      <span className={`text-xs font-bold rounded-full px-3 py-1.5 w-fit ${daysLeft > 0 ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fce8e6] text-[#c5221f]'}`}>{daysLeft > 0 ? `Liko ${daysLeft} d.` : 'Pasibaigusi'}</span>
-                                            <div className="flex flex-wrap gap-2">
-                        <button onClick={() => { setSelectedUser(user); setExtendDate(formatDateForInput(user.trial_end)); setExtendDays(0); }} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl px-3 py-2 text-sm font-semibold">Pratęsti</button>
-                        <button onClick={() => runUserAction('expire_trial', user)} disabled={daysLeft === 0} className="border border-[#f9df96] text-[#b06000] hover:bg-[#fef7e0] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-sm font-semibold">Nutraukti</button>
-                        <button onClick={() => router.push(`/dashboard?view_as=${user.id}`)} className="border border-[#c6dafc] bg-[#e8f0fe] text-[#1967d2] hover:bg-[#dbe7fb] rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2"><ExternalLink size={15} /> Dashboard</button>
-                      </div>
-                    </div>
-                  )
-                })}
-                {filteredUsers.length === 0 && <div className="p-10 text-center text-sm text-[#5f6368]">Vartotojų nerasta.</div>}
-              </div>
-            </div>
-          </>
-        )}
-
         {tab === 'settings' && (
           <div className="bg-white border border-[#dadce0] rounded-2xl p-8">
             <Settings className="text-[#1a73e8] mb-5" size={28} />
