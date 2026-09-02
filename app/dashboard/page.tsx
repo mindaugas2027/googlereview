@@ -166,10 +166,12 @@ export default function DashboardPage() {
   const [qrActionError, setQrActionError] = useState<string | null>(null);
   const [newQrLabel, setNewQrLabel] = useState('');
   const [newQrLocationId, setNewQrLocationId] = useState('');
+  const [qrLocationFilter, setQrLocationFilter] = useState('');
   const [creatingQr, setCreatingQr] = useState(false);
   const [newLocation, setNewLocation] = useState({ name: '', address: '', google_review_url: '' });
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [savingLocation, setSavingLocation] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   // Vartotojo planas — iš user_metadata.plan_id (keičiamas Mokėjimų skiltyje / admino)
   const plan: PlanDefinition = getPlan(typeof user?.user_metadata?.plan_id === 'string' ? user.user_metadata.plan_id : undefined);
   // Viso laikotarpio agregatai iš inkrementinių skaitiklių (business_stats lentelės,
@@ -209,6 +211,9 @@ export default function DashboardPage() {
     }).length;
   });
   const feedbackChartMax = Math.max(...feedbacksByWeek, 1);
+  const visibleQrCodes = qrLocationFilter
+    ? qrCodes.filter((code) => code.location_id === qrLocationFilter)
+    : qrCodes;
 
   const trialDaysLeft = getTrialDaysLeft(user?.user_metadata);
   const subscriptionExpired = trialDaysLeft === 0;
@@ -231,6 +236,11 @@ export default function DashboardPage() {
       const viewAsParam = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('view_as')
         : null;
+      const stripeStatus = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('stripe')
+        : null;
+      if (stripeStatus === 'success') setProfileMessage('Apmokėjimas gautas. Prenumerata bus aktyvuota netrukus.');
+      if (stripeStatus === 'cancelled') setProfileMessage('Apmokėjimas atšauktas.');
 
       // Administratorius be peržiūros parametro nukreipiamas į admin panelę
       if (!viewAsParam && session.user.email?.toLowerCase() === ADMIN_EMAIL) {
@@ -652,7 +662,7 @@ export default function DashboardPage() {
     setProfileMessage('Logotipas įkeltas.');
   };
 
-  // Plano pasirinkimas Mokėjimų skiltyje (kol kas be Stripe — planas saugomas user_metadata)
+  // Adminas planą keičia rankiniu būdu, klientas planą aktyvuoja per Stripe Checkout.
   const selectPlan = async (planId: string) => {
     const selected = getPlan(planId);
     if (viewAsId) {
@@ -664,9 +674,24 @@ export default function DashboardPage() {
       return;
     }
     if (!user) return;
-    const { data, error } = await supabase.auth.updateUser({ data: { plan_id: planId } });
-    setProfileMessage(error ? error.message : `Planas pakeistas į „${selected.name}“.`);
-    if (!error && data.user) setUser(data.user);
+    setCheckoutLoading(planId);
+    setProfileMessage(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Sesija nerasta. Prisijunkite iš naujo.');
+      const response = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.url) throw new Error(payload?.error || 'Nepavyko pradėti apmokėjimo.');
+      window.location.assign(payload.url);
+    } catch (cause) {
+      setProfileMessage(cause instanceof Error ? cause.message : 'Nepavyko pradėti apmokėjimo.');
+    } finally {
+      setCheckoutLoading(null);
+    }
   };
 
   const renewSubscription = async () => {
@@ -974,10 +999,10 @@ export default function DashboardPage() {
                       </ul>
                       <button
                         onClick={() => selectPlan(item.id)}
-                        disabled={isCurrent}
-                        className={`w-full py-2.5 rounded-xl text-sm font-semibold transition ${isCurrent ? 'bg-[#e6f4ea] text-[#137333] cursor-default' : 'bg-[#1a73e8] hover:bg-[#1769d1] text-white'}`}
+                        disabled={isCurrent || checkoutLoading !== null}
+                        className={`w-full py-2.5 rounded-xl text-sm font-semibold transition ${isCurrent ? 'bg-[#e6f4ea] text-[#137333] cursor-default' : 'bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 text-white'}`}
                       >
-                        {isCurrent ? 'Jūsų planas' : 'Pasirinkti'}
+                        {isCurrent ? 'Jūsų planas' : checkoutLoading === item.id ? 'Atidaroma…' : 'Mokėti su Stripe'}
                       </button>
                     </div>
                   );
@@ -1046,8 +1071,20 @@ export default function DashboardPage() {
                       {qrLimits !== null && qrLimits.max_qr >= 0 && qrCodes.length >= qrLimits.max_qr && <p className="text-xs text-[#b06000] mt-3">Pasiektas plano limitas — atnaujinkite planą Mokėjimų skiltyje.</p>}
                     </div>
                   )}
+                  {plan.usesLocations && locations.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                      <div>
+                        <h2 className="font-bold">QR kodai pagal vietą</h2>
+                        <p className="text-xs text-[#5f6368] mt-1">Pasirinkite vietą, kad matytumėte jai priskirtus QR kodus.</p>
+                      </div>
+                      <select value={qrLocationFilter} onChange={(event) => setQrLocationFilter(event.target.value)} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]" aria-label="Filtruoti QR kodus pagal vietą">
+                        <option value="">Visos vietos ({qrCodes.length})</option>
+                        {locations.map((location) => <option key={location.id} value={location.id}>{location.name} ({qrCodes.filter((code) => code.location_id === location.id).length})</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div className="grid gap-5">
-                    {qrCodes.map((code) => (
+                    {visibleQrCodes.map((code) => (
                       <div key={code.id} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm grid md:grid-cols-[150px_1fr] gap-5 items-start">
                         <div className="flex flex-col items-center">
                           <div className="bg-white border border-[#dadce0] rounded-xl p-2 w-fit"><QRCodeSVG value={reviewUrlForQr(code.id)} size={120} includeMargin /></div>
@@ -1080,7 +1117,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     ))}
-                    {qrCodes.length === 0 && <div className="bg-white border border-dashed border-[#b7bdc4] rounded-2xl p-8 text-center text-sm text-[#5f6368]">QR kodų dar nėra — sukurkite pirmąjį aukščiau.</div>}
+                    {visibleQrCodes.length === 0 && <div className="bg-white border border-dashed border-[#b7bdc4] rounded-2xl p-8 text-center text-sm text-[#5f6368]">Šiai vietai QR kodų dar nėra.</div>}
                   </div>
                   {pdfError && <p className="text-xs text-[#c5221f] mt-3">{pdfError}</p>}
                     </>
@@ -1146,7 +1183,7 @@ export default function DashboardPage() {
 
           {page === 'feedback' && (
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6"><div><h1 className="text-3xl font-extrabold text-[#202124]">Atsiliepimai</h1><p className="text-sm text-[#5f6368] mt-2">Klientų įvertinimai, žinutės ir nukreipimai į Google vienoje vietoje.</p></div><div className="flex flex-wrap items-center gap-2"><select value={feedbackQrFilter || ''} onChange={(event) => { setFeedbackQrFilter(event.target.value || null); setFeedbackPage(1); }} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]" aria-label="Filtruoti pagal QR kodą"><option value="">Visi QR kodai</option>{qrCodes.map((code) => <option key={code.id} value={code.id}>{code.label}</option>)}<option value="unassigned">Be QR kodo</option></select><select value={feedbackSort} onChange={(event) => { setFeedbackSort(event.target.value as 'newest' | 'oldest' | 'rating-high' | 'rating-low'); setFeedbackPage(1); }} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]"><option value="newest">Naujausi pirmi</option><option value="oldest">Seniausi pirmi</option><option value="rating-high">Daugiausia žvaigždučių</option><option value="rating-low">Mažiausiai žvaigždučių</option></select><button type="button" onClick={deleteAllFeedback} disabled={statsTotal === 0} className="border border-[#f5b7b1] text-[#c5221f] hover:bg-[#fce8e6] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2.5 text-sm font-semibold">Ištrinti visus</button></div></div>
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6"><div><h1 className="text-3xl font-extrabold text-[#202124]">Atsiliepimai</h1><p className="text-sm text-[#5f6368] mt-2">Klientų įvertinimai, žinutės ir nukreipimai į Google vienoje vietoje.</p></div><div className="flex flex-wrap items-center gap-2"><select value={feedbackQrFilter || ''} onChange={(event) => { setFeedbackQrFilter(event.target.value || null); setFeedbackPage(1); }} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]" aria-label="Filtruoti pagal QR kodą"><option value="">Visi QR kodai</option>{qrCodes.map((code) => <option key={code.id} value={code.id}>{code.label}</option>)}</select><select value={feedbackSort} onChange={(event) => { setFeedbackSort(event.target.value as 'newest' | 'oldest' | 'rating-high' | 'rating-low'); setFeedbackPage(1); }} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]"><option value="newest">Naujausi pirmi</option><option value="oldest">Seniausi pirmi</option><option value="rating-high">Daugiausia žvaigždučių</option><option value="rating-low">Mažiausiai žvaigždučių</option></select><button type="button" onClick={deleteAllFeedback} disabled={statsTotal === 0} className="border border-[#f5b7b1] text-[#c5221f] hover:bg-[#fce8e6] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2.5 text-sm font-semibold">Ištrinti visus</button></div></div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8"><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Gauti atsiliepimai</div><div className="text-2xl font-extrabold mt-2">{statsTotal}</div></div><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Vidutinis įvertinimas</div><div className="flex items-center gap-2 mt-2"><span className="text-2xl font-extrabold">{averageRating}</span>{statsTotal > 0 && <span className="flex text-[#f29900]">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= Math.round(Number(averageRating)) ? 'currentColor' : 'none'} />)}</span>}</div></div><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Nukreipta į Google</div><div className="text-2xl font-extrabold mt-2">{googleRedirects}</div></div></div>
               <div className="mb-3 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#34a853]" /><h2 className="text-sm font-bold uppercase tracking-wider text-[#5f6368]">Klientų atsiliepimai</h2></div>
               <div className="flex flex-wrap items-center gap-2 mb-4"><button type="button" onClick={() => { setFeedbackRatingFilter(null); setFeedbackPage(1); }} className={`px-3 py-2 rounded-xl text-sm font-semibold ${feedbackRatingFilter === null ? 'bg-[#1a73e8] text-white' : 'bg-white border border-[#dadce0] text-[#5f6368]'}`}>Visi</button>{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" aria-label={`Rodyti ${rating} žvaigždučių atsiliepimus`} onClick={() => { setFeedbackRatingFilter(rating); setFeedbackPage(1); }} className={`flex items-center gap-1 px-2.5 py-2 rounded-xl text-sm font-semibold ${feedbackRatingFilter === rating ? 'bg-[#f29900] text-white' : 'bg-white border border-[#dadce0] text-[#f29900]'}`}>{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= rating ? 'currentColor' : 'none'} />)}</button>)}</div>
