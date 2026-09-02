@@ -14,7 +14,7 @@ type LocationRow = {
 export async function GET(request: NextRequest) {
   const guard = await resolveTargetUser(request)
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
-  const { client, userId, plan, metadata } = guard
+  const { client, userId, plan } = guard
 
   try {
     // „Vietų" sistema tik Verslas planui. Startas/Pro naudoja senąją elgseną:
@@ -88,6 +88,19 @@ export async function POST(request: NextRequest) {
       .select('*')
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Pirmos vietos sukūrimas iškart paruošia QR kodą, priskirtą tai vietai.
+    const { count: qrCount } = await client
+      .from('qr_codes')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+    if ((qrCount ?? 0) === 0) {
+      const { error: qrError } = await client
+        .from('qr_codes')
+        .insert({ user_id: userId, label: `${name} QR kodas`, location_id: data.id })
+      if (qrError) return NextResponse.json({ error: qrError.message }, { status: 500 })
+    }
+
     return NextResponse.json({ ok: true, location: data })
   } catch (cause) {
     console.error('[api/locations] POST nepavyko:', cause)
