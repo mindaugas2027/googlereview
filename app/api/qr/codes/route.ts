@@ -40,13 +40,6 @@ export async function GET(request: NextRequest) {
         .order('created_at')
       locations = (locationsData || []) as LocationRow[]
 
-      if (locations.length === 0 && typeof metadata.google_review_url === 'string' && metadata.google_review_url.trim()) {
-        const { data: created } = await client
-          .from('locations')
-          .insert({ user_id: userId, name: 'Pagrindinė vieta', address: '', google_review_url: metadata.google_review_url })
-          .select('*')
-        if (created) locations = created as LocationRow[]
-      }
     }
 
     const { data: codes } = await client
@@ -56,11 +49,10 @@ export async function GET(request: NextRequest) {
       .order('created_at')
     let qrCodes = (codes || []) as unknown as QrCodeRow[]
 
-    // Ištisinumas, kaip pradinėje sistemoje: vietos nuorodą įvedus (arba Verslo
-    // plano vartotojui) pirmasis QR kodas sukuriamas automatiškai — vartotojui
-    // nieko daryti nereikia. Kol Google Review nuorodos nėra, QR sąrašas tuščias
-    // (QR tab'as ragina pridėti nuorodą skiltyje „Vietos“).
-    if (qrCodes.length === 0 && (plan.usesLocations || (typeof metadata.google_review_url === 'string' && metadata.google_review_url.trim().length > 0))) {
+    // Verslas planui QR kodas atsiranda tik tada, kai sukurta bent viena vieta
+    // su Google Review nuoroda. Pro planui paliekamas senas URL kelias.
+    const hasLocationWithUrl = locations.some((location) => location.google_review_url.trim().length > 0)
+    if (qrCodes.length === 0 && (plan.usesLocations ? hasLocationWithUrl : (typeof metadata.google_review_url === 'string' && metadata.google_review_url.trim().length > 0))) {
       const { data: created } = await client
         .from('qr_codes')
         .insert({ user_id: userId, label: 'Pagrindinis QR kodas', location_id: locations[0]?.id ?? null })
@@ -134,6 +126,10 @@ export async function POST(request: NextRequest) {
     const label = (body.label || '').trim()
     if (!label) return NextResponse.json({ error: 'Įrašykite QR kodo pavadinimą (pvz. „Stalas 1“).' }, { status: 400 })
 
+    if (plan.usesLocations && (!body.location_id || typeof body.location_id !== 'string')) {
+      return NextResponse.json({ error: 'Pirmiausia sukurkite vietą su Google Review nuoroda ir susiekite QR kodą su ja.' }, { status: 400 })
+    }
+
     const { count } = await client
       .from('qr_codes')
       .select('id', { count: 'exact', head: true })
@@ -149,11 +145,12 @@ export async function POST(request: NextRequest) {
     if (typeof body.location_id === 'string' && body.location_id) {
       const { data: location } = await client
         .from('locations')
-        .select('id')
+        .select('id, google_review_url')
         .eq('id', body.location_id)
         .eq('user_id', userId)
         .single()
       if (!location) return NextResponse.json({ error: 'Vieta nerasta.' }, { status: 400 })
+      if (plan.usesLocations && !location.google_review_url) return NextResponse.json({ error: 'Pasirinkta vieta neturi Google Review nuorodos.' }, { status: 400 })
       locationId = location.id
     }
 

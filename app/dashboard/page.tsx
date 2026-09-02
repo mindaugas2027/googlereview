@@ -18,6 +18,8 @@ type Feedback = {
   date: string;
   createdAt?: string;
   sentToGoogle: boolean;
+  qrCodeId: string | null;
+  qrLabel: string | null;
 };
 
 type FeedbackRow = {
@@ -27,6 +29,8 @@ type FeedbackRow = {
   comment: string;
   created_at: string;
   sent_to_google?: boolean | null;
+  qr_code_id?: string | null;
+  qr_codes?: { label?: string } | null;
 };
 
 type DashboardUser = {
@@ -115,6 +119,8 @@ const mapFeedback = (feedback: FeedbackRow): Feedback => ({
   date: new Date(feedback.created_at).toLocaleDateString('lt-LT'),
   createdAt: feedback.created_at,
   sentToGoogle: feedback.sent_to_google || feedback.comment === 'Klientas nukreiptas į Google Review.',
+  qrCodeId: feedback.qr_code_id || null,
+  qrLabel: feedback.qr_codes?.label || null,
 });
 
 export default function DashboardPage() {
@@ -129,6 +135,7 @@ export default function DashboardPage() {
   const [viewAsEmail, setViewAsEmail] = useState('');
   const [feedbackSort, setFeedbackSort] = useState<'newest' | 'oldest' | 'rating-high' | 'rating-low'>('newest');
   const [feedbackRatingFilter, setFeedbackRatingFilter] = useState<number | null>(null);
+  const [feedbackQrFilter, setFeedbackQrFilter] = useState<string | null>(null);
   const [monthlyGoal, setMonthlyGoal] = useState(60);
   const [pdfDownloading, setPdfDownloading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -369,7 +376,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user || subscriptionExpired) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sąmoningai krauname QR/vietų duomenis tik atidarius tab'ą
-    if (page === 'qr' || page === 'locations') void fetchQrData();
+    if (page === 'qr' || page === 'locations' || page === 'feedback') void fetchQrData();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pakanka reaguoti į tab'ą ir vartotoją
   }, [page, user?.id, subscriptionExpired]);
 
@@ -799,6 +806,7 @@ export default function DashboardPage() {
     pageNumber: number = feedbackPage,
     sort: typeof feedbackSort = feedbackSort,
     ratingFilter: number | null = feedbackRatingFilter,
+    qrFilter: string | null = feedbackQrFilter,
   ) => {
     const businessId = viewAsId || user?.id;
     if (!businessId) return;
@@ -808,6 +816,7 @@ export default function DashboardPage() {
     try {
       const params = new URLSearchParams({ business: businessId, page: String(pageNumber), sort });
       if (ratingFilter !== null) params.set('rating', String(ratingFilter));
+      if (qrFilter !== null) params.set('qr', qrFilter);
       const response = await fetch(`/api/feedbacks?${params.toString()}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || `Nepavyko įkelti atsiliepimų (${response.status}).`);
@@ -840,9 +849,9 @@ export default function DashboardPage() {
   useEffect(() => {
     if (page !== 'feedback') return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sąmoningai krauname šio tab'o puslapį tik atidarius jį
-    void loadFeedbackPage(feedbackPage, feedbackSort, feedbackRatingFilter);
+    void loadFeedbackPage(feedbackPage, feedbackSort, feedbackRatingFilter, feedbackQrFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- kraunama reaguojant į puslapio/rikiavimo/filtro pasikeitimus
-  }, [page, feedbackPage, feedbackSort, feedbackRatingFilter]);
+  }, [page, feedbackPage, feedbackSort, feedbackRatingFilter, feedbackQrFilter]);
 
   // Inkrementinis atnaujinimas: Supabase trigger'is pakeičia business_stats eilutę,
   // o Realtime momentaliai perduoda naujus skaitiklius į frontend'ą (be perkrovimo)
@@ -1011,8 +1020,8 @@ export default function DashboardPage() {
               ) : (
                 // ── PRO / VERSLAS: QR kodų sąrašas su kūrimo forma ──
                 <>
-                {!plan.usesLocations && !business.google_review_url ? (
-                  <div className="bg-[#fef7e0] border border-[#f9df96] rounded-2xl p-6 text-sm text-[#b06000] shadow-sm">Pirmiausia pridėkite Google Review URL skiltyje „Vietos“ — tada automatiškai susikurs pirmasis QR kodas.</div>
+                {((plan.usesLocations && !locations.some((location) => location.google_review_url.trim())) || (!plan.usesLocations && !business.google_review_url)) ? (
+                  <div className="bg-[#fef7e0] border border-[#f9df96] rounded-2xl p-6 shadow-sm"><p className="text-sm text-[#b06000]">Pirmiausia nustatykite bent vieną vietą su Google Review URL — tik tada galėsite generuoti QR kodus.</p><button type="button" onClick={() => setPage('locations')} className="mt-4 bg-[#b06000] hover:bg-[#8f4d00] text-white rounded-xl px-4 py-2.5 text-sm font-semibold flex items-center gap-2"><MapPin size={16} /> Eiti į vietas</button></div>
                 ) : (
                   <>
                   {qrDataLoading && qrCodes.length === 0 ? (
@@ -1059,6 +1068,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <button onClick={() => navigator.clipboard?.writeText(reviewUrlForQr(code.id))} className="bg-[#f1f3f4] hover:bg-[#e8eaed] text-[#3c4043] rounded-xl px-3.5 py-2 text-xs font-semibold">Kopijuoti nuorodą</button>
+                            <button onClick={() => { setFeedbackQrFilter(code.id); setFeedbackPage(1); setPage('feedback'); }} className="bg-[#e8f0fe] hover:bg-[#d2e3fc] text-[#1967d2] rounded-xl px-3.5 py-2 text-xs font-semibold flex items-center gap-1.5"><MessageSquare size={13} /> Atsiliepimai ({code.feedbacks})</button>
                             {plan.usesLocations && locations.length > 0 && (
                               <select value={code.location_id || ''} onChange={(event) => updateQrCodeLocation(code.id, event.target.value || null)} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2 text-xs font-semibold text-[#3c4043]" aria-label="Keisti vietą">
                                 <option value="">Susieti su vieta…</option>
@@ -1136,7 +1146,7 @@ export default function DashboardPage() {
 
           {page === 'feedback' && (
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6"><div><h1 className="text-3xl font-extrabold text-[#202124]">Atsiliepimai</h1><p className="text-sm text-[#5f6368] mt-2">Klientų įvertinimai, žinutės ir nukreipimai į Google vienoje vietoje.</p></div><div className="flex items-center gap-2"><select value={feedbackSort} onChange={(event) => { setFeedbackSort(event.target.value as 'newest' | 'oldest' | 'rating-high' | 'rating-low'); setFeedbackPage(1); }} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]"><option value="newest">Naujausi pirmi</option><option value="oldest">Seniausi pirmi</option><option value="rating-high">Daugiausia žvaigždučių</option><option value="rating-low">Mažiausiai žvaigždučių</option></select><button type="button" onClick={deleteAllFeedback} disabled={statsTotal === 0} className="border border-[#f5b7b1] text-[#c5221f] hover:bg-[#fce8e6] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2.5 text-sm font-semibold">Ištrinti visus</button></div></div>
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6"><div><h1 className="text-3xl font-extrabold text-[#202124]">Atsiliepimai</h1><p className="text-sm text-[#5f6368] mt-2">Klientų įvertinimai, žinutės ir nukreipimai į Google vienoje vietoje.</p></div><div className="flex flex-wrap items-center gap-2"><select value={feedbackQrFilter || ''} onChange={(event) => { setFeedbackQrFilter(event.target.value || null); setFeedbackPage(1); }} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]" aria-label="Filtruoti pagal QR kodą"><option value="">Visi QR kodai</option>{qrCodes.map((code) => <option key={code.id} value={code.id}>{code.label}</option>)}<option value="unassigned">Be QR kodo</option></select><select value={feedbackSort} onChange={(event) => { setFeedbackSort(event.target.value as 'newest' | 'oldest' | 'rating-high' | 'rating-low'); setFeedbackPage(1); }} className="bg-white border border-[#dadce0] rounded-xl px-3 py-2.5 text-sm text-[#3c4043]"><option value="newest">Naujausi pirmi</option><option value="oldest">Seniausi pirmi</option><option value="rating-high">Daugiausia žvaigždučių</option><option value="rating-low">Mažiausiai žvaigždučių</option></select><button type="button" onClick={deleteAllFeedback} disabled={statsTotal === 0} className="border border-[#f5b7b1] text-[#c5221f] hover:bg-[#fce8e6] disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-2.5 text-sm font-semibold">Ištrinti visus</button></div></div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8"><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Gauti atsiliepimai</div><div className="text-2xl font-extrabold mt-2">{statsTotal}</div></div><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Vidutinis įvertinimas</div><div className="flex items-center gap-2 mt-2"><span className="text-2xl font-extrabold">{averageRating}</span>{statsTotal > 0 && <span className="flex text-[#f29900]">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= Math.round(Number(averageRating)) ? 'currentColor' : 'none'} />)}</span>}</div></div><div className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="text-xs text-[#5f6368]">Nukreipta į Google</div><div className="text-2xl font-extrabold mt-2">{googleRedirects}</div></div></div>
               <div className="mb-3 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#34a853]" /><h2 className="text-sm font-bold uppercase tracking-wider text-[#5f6368]">Klientų atsiliepimai</h2></div>
               <div className="flex flex-wrap items-center gap-2 mb-4"><button type="button" onClick={() => { setFeedbackRatingFilter(null); setFeedbackPage(1); }} className={`px-3 py-2 rounded-xl text-sm font-semibold ${feedbackRatingFilter === null ? 'bg-[#1a73e8] text-white' : 'bg-white border border-[#dadce0] text-[#5f6368]'}`}>Visi</button>{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" aria-label={`Rodyti ${rating} žvaigždučių atsiliepimus`} onClick={() => { setFeedbackRatingFilter(rating); setFeedbackPage(1); }} className={`flex items-center gap-1 px-2.5 py-2 rounded-xl text-sm font-semibold ${feedbackRatingFilter === rating ? 'bg-[#f29900] text-white' : 'bg-white border border-[#dadce0] text-[#f29900]'}`}>{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= rating ? 'currentColor' : 'none'} />)}</button>)}</div>
@@ -1145,7 +1155,7 @@ export default function DashboardPage() {
                 {!feedbackPageLoading && statsTotal > 0 && pagedFeedbacks.length === 0 && <div className="sm:col-span-2 xl:col-span-3 bg-white border border-dashed border-[#b7bdc4] rounded-2xl p-8 text-center text-sm text-[#5f6368]">Šiame puslapyje atsiliepimų nėra.</div>}
                 {feedbackPageLoading && <div className="sm:col-span-2 xl:col-span-3 bg-white border border-[#dadce0] rounded-2xl p-6 text-center text-sm text-[#5f6368]">Įkeliama…</div>}
                 {!feedbackPageLoading && pagedFeedbacks.map((item) => (
-                  <div key={item.id} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="flex items-start gap-4"><span className={`h-11 w-11 shrink-0 rounded-full grid place-items-center text-sm font-bold ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.name[0]?.toUpperCase() || '?'}</span><div className="min-w-0 flex-1"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div className="flex flex-wrap items-center gap-3"><span className="font-bold text-[#202124]">{item.name}</span><span className="flex items-center text-[#f29900] text-sm gap-1">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= item.rating ? 'currentColor' : 'none'} />)} <span className="text-[#5f6368] ml-1">{item.rating}/5</span></span></div><span className="text-xs text-[#80868b]">{item.date}</span></div><div className={`inline-flex text-[11px] font-bold uppercase tracking-wide rounded-full px-2 py-1 mt-3 ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.sentToGoogle ? 'Nukreipta į Google' : 'Privati žinutė vadovui'}</div><p className="text-[#3c4043] text-sm leading-relaxed mt-3">{item.comment}</p></div></div></div>
+                  <div key={item.id} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><div className="flex items-start gap-4"><span className={`h-11 w-11 shrink-0 rounded-full grid place-items-center text-sm font-bold ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.name[0]?.toUpperCase() || '?'}</span><div className="min-w-0 flex-1"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div className="flex flex-wrap items-center gap-3"><span className="font-bold text-[#202124]">{item.name}</span><span className="flex items-center text-[#f29900] text-sm gap-1">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} fill={star <= item.rating ? 'currentColor' : 'none'} />)} <span className="text-[#5f6368] ml-1">{item.rating}/5</span></span></div><span className="text-xs text-[#80868b]">{item.date}</span></div><div className="flex flex-wrap items-center gap-2 mt-3"><div className={`inline-flex text-[11px] font-bold uppercase tracking-wide rounded-full px-2 py-1 ${item.sentToGoogle ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>{item.sentToGoogle ? 'Nukreipta į Google' : 'Privati žinutė vadovui'}</div><span className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2 py-1 bg-[#e8f0fe] text-[#1967d2]"><QrCode size={12} /> {item.qrLabel || 'Be QR kodo'}</span></div><p className="text-[#3c4043] text-sm leading-relaxed mt-3">{item.comment}</p></div></div></div>
                 ))}
               </div>
               {statsTotal > 0 && totalFeedbackPages > 1 && (

@@ -35,16 +35,6 @@ export async function GET(request: NextRequest) {
 
     let locations = (data || []) as LocationRow[]
 
-    // Migracijos kelias: seni VERSLO plano vartotojai gali turėti tik
-    // metadata.google_review_url — sukuriame numatytąją vietą.
-    if (locations.length === 0 && typeof metadata.google_review_url === 'string' && metadata.google_review_url.trim()) {
-      const { data: created, error: insertError } = await client
-        .from('locations')
-        .insert({ user_id: userId, name: 'Pagrindinė vieta', address: '', google_review_url: metadata.google_review_url })
-        .select('*')
-      if (!insertError && created) locations = created as LocationRow[]
-    }
-
     return NextResponse.json({
       locations,
       limits: { plan: plan.id, plan_name: plan.name, max_locations: plan.maxLocations, current: locations.length },

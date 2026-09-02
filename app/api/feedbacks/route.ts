@@ -14,7 +14,7 @@ const SORT_COLUMNS: Record<FeedbackSort, Array<{ column: string; ascending: bool
 }
 
 /**
- * GET /api/feedbacks?business=<uuid>&page=1&sort=newest&rating=4
+ * GET /api/feedbacks?business=<uuid>&page=1&sort=newest&rating=4&qr=<uuid>
  * Puslapiuotas atsiliepimų sąrašas (21 įrašas per puslapį). Rikiavimas ir
  * įvertinimo filtras taikomi duomenų bazėje — iš serverio grąžinami tik
  * to puslapio įrašai ir bendras kiekis, todėl tūkstančiai atsiliepimų
@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
     const sort = SORT_COLUMNS[sortParam] ? sortParam : 'newest'
     const ratingParam = Number(searchParams.get('rating'))
     const ratingFilter = ratingParam >= 1 && ratingParam <= 5 ? Math.round(ratingParam) : null
+    const qrFilter = searchParams.get('qr')?.trim() || null
     const pageParam = Number(searchParams.get('page'))
     const page = Number.isFinite(pageParam) && pageParam >= 1 ? Math.floor(pageParam) : 1
     const from = (page - 1) * FEEDBACK_PAGE_SIZE
@@ -43,9 +44,11 @@ export async function GET(request: NextRequest) {
 
     let query = client
       .from('feedbacks')
-      .select('id, name, rating, comment, created_at, sent_to_google', { count: 'exact' })
+      .select('id, name, rating, comment, created_at, sent_to_google, qr_code_id, qr_codes(label)', { count: 'exact' })
       .eq('user_id', businessId)
     if (ratingFilter !== null) query = query.eq('rating', ratingFilter)
+    if (qrFilter === 'unassigned') query = query.is('qr_code_id', null)
+    else if (qrFilter) query = query.eq('qr_code_id', qrFilter)
     for (const order of SORT_COLUMNS[sort]) {
       query = query.order(order.column, { ascending: order.ascending })
     }
