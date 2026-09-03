@@ -22,7 +22,16 @@ export async function GET(request: NextRequest) {
     }
 
     const stats = await readOrInitStats(client, businessId)
-    return NextResponse.json({ stats })
+    const { data: businessUser, error: userError } = await client.auth.admin.getUserById(businessId)
+    if (userError || !businessUser.user) return NextResponse.json({ error: 'Vartotojas nerastas.' }, { status: 404 })
+    const threshold = Math.min(5, Math.max(1, Math.round(Number(businessUser.user.user_metadata?.google_min_rating)) || 4))
+    const { count: savedReviews } = await client
+      .from('feedbacks')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', businessId)
+      .lt('rating', threshold)
+      .eq('sent_to_google', false)
+    return NextResponse.json({ stats, saved_reviews: savedReviews || 0, saved_reviews_threshold: threshold })
   } catch (cause) {
     console.error('[api/stats] GET nepavyko:', cause)
     const message = cause instanceof Error ? cause.message : 'Netikėta serverio klaida.'

@@ -156,6 +156,8 @@ export default function DashboardPage() {
   });
 
   const [stats, setStats] = useState<BusinessStats>(EMPTY_STATS);
+  const [savedReviews, setSavedReviews] = useState(0);
+  const [savedReviewsThreshold, setSavedReviewsThreshold] = useState(4);
   const [pagedFeedbacks, setPagedFeedbacks] = useState<Feedback[]>([]);
   const [feedbackPage, setFeedbackPage] = useState(1);
   const [feedbackTotal, setFeedbackTotal] = useState(0);
@@ -190,6 +192,8 @@ export default function DashboardPage() {
   const safeMinRating = Math.min(5, Math.max(1, Math.round(Number(business.google_min_rating)) || 4));
   const positiveFeedbacks = [5, 4, 3, 2, 1].filter((rating) => rating >= safeMinRating).reduce((total, rating) => total + ratingCount(stats, rating), 0);
   const positiveRate = statsTotal ? Math.round((positiveFeedbacks / statsTotal) * 100) : 0;
+  const savedReviewsRate = statsTotal ? Math.round((savedReviews / statsTotal) * 100) : 0;
+  const savedReviewsRange = savedReviewsThreshold > 1 ? `1–${savedReviewsThreshold - 1} žvaigždučių` : 'žemiau pasirinkto slenksčio';
   const monthlyFeedbacks = monthlyFeedbackCount;
   const monthlyGoalProgress = Math.min(Math.round((monthlyFeedbacks / monthlyGoal) * 100), 100);
   const ratingDistribution = [5, 4, 3, 2, 1].map((rating) => ({
@@ -283,6 +287,8 @@ export default function DashboardPage() {
         }));
         setMonthlyGoal(Math.max(1, Number(metadata.monthly_goal) || 60));
         setStats(normalizeStats(payload.stats));
+        setSavedReviews(Number(payload.saved_reviews) || 0);
+        setSavedReviewsThreshold(Number(payload.saved_reviews_threshold) || 4);
         setRecentFeedbackDates(Array.isArray(payload.recent_feedback_dates) ? payload.recent_feedback_dates.map(String) : []);
         setMonthlyFeedbackCount(Number(payload.monthly_feedback_count) || 0);
         setLoading(false);
@@ -825,7 +831,11 @@ export default function DashboardPage() {
     try {
       const response = await fetch(`/api/stats${query ? `?${query}` : ''}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
       const payload = await response.json().catch(() => null);
-      if (response.ok && payload?.stats) setStats(normalizeStats(payload.stats));
+      if (response.ok && payload?.stats) {
+        setStats(normalizeStats(payload.stats));
+        setSavedReviews(Number(payload.saved_reviews) || 0);
+        setSavedReviewsThreshold(Number(payload.saved_reviews_threshold) || 4);
+      }
     } catch {
       // skaitiklius taip pat atnaujins Realtime — tyliai praleidžiame
     }
@@ -847,6 +857,8 @@ export default function DashboardPage() {
         const payload = await response.json().catch(() => null);
         if (!response.ok || !payload) return;
         setStats(normalizeStats(payload.stats));
+        setSavedReviews(Number(payload.saved_reviews) || 0);
+        setSavedReviewsThreshold(Number(payload.saved_reviews_threshold) || 4);
         setRecentFeedbackDates(Array.isArray(payload.recent_feedback_dates) ? payload.recent_feedback_dates.map(String) : []);
         setMonthlyFeedbackCount(Number(payload.monthly_feedback_count) || 0);
       } catch {
@@ -1273,8 +1285,9 @@ export default function DashboardPage() {
           {page === 'analytics' && (
             <div>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-8"><div><span className="text-xs font-bold text-[#1a73e8] uppercase tracking-wider">DUOMENYS</span><h1 className="text-3xl font-extrabold mt-1">Analitika</h1><p className="text-sm text-[#5f6368] mt-1">Viso laikotarpio statistika, skaičiuojama duomenų bazėje.</p></div><span className="inline-flex items-center rounded-full border border-[#b7dfc1] bg-[#e6f4ea] px-3 py-1.5 text-xs font-bold text-[#137333]">Visas laikotarpis</span></div>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">{[{ label: 'Konversija į atsiliepimą', value: `${reviewConversion}%`, change: `${statsTotal} iš ${stats.total_qr_scans} nuskaitymų` }, { label: 'Teigiami vertinimai', value: `${positiveRate}%`, change: `${positiveFeedbacks} atsiliepimai virš slenksčio` }, { label: 'Atsiliepimų vidurkis', value: averageRating === '—' ? '—' : `${averageRating} / 5`, change: `${statsTotal} įvertinimai` }, { label: 'Nukreipta į Google', value: googleRedirects.toString(), change: 'realūs paspaudimai' }].map((stat) => <div key={stat.label} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><p className="text-xs text-[#5f6368]">{stat.label}</p><div className="flex items-end justify-between mt-3"><span className="text-2xl font-extrabold">{stat.value}</span><span className="text-xs font-bold text-[#137333]">{stat.change}</span></div></div>)}</div>
+              <div className={`grid sm:grid-cols-2 ${plan.id === 'startas' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'} gap-4 mb-6`}>{[{ label: 'Konversija į atsiliepimą', value: `${reviewConversion}%`, change: `${statsTotal} iš ${stats.total_qr_scans} nuskaitymų` }, { label: 'Teigiami vertinimai', value: `${positiveRate}%`, change: `${positiveFeedbacks} atsiliepimai virš slenksčio` }, { label: 'Atsiliepimų vidurkis', value: averageRating === '—' ? '—' : `${averageRating} / 5`, change: `${statsTotal} įvertinimai` }, { label: 'Nukreipta į Google', value: googleRedirects.toString(), change: 'realūs paspaudimai' }, ...(plan.id !== 'startas' ? [{ label: 'Saved Reviews', value: savedReviews.toString(), change: `${savedReviewsRate}% visų atsiliepimų` }] : [])].map((stat) => <div key={stat.label} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><p className="text-xs text-[#5f6368]">{stat.label}</p><div className="flex items-end justify-between mt-3"><span className="text-2xl font-extrabold">{stat.value}</span><span className="text-xs font-bold text-[#137333]">{stat.change}</span></div></div>)}</div>
               <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><h2 className="font-bold text-lg">Vertinimų pasiskirstymas</h2><p className="text-sm text-[#5f6368] mt-1 mb-6">Viso laikotarpio gautas realus klientų įvertinimų skaičius</p>{ratingDistribution.map((row) => <div key={row.rating} className="flex items-center gap-3 mb-4 text-sm"><span className="w-28 text-[#5f6368]">{row.rating} žvaigždutės</span><div className="flex-1 h-2 bg-[#f1f3f4] rounded-full overflow-hidden"><div className={`h-full rounded-full ${row.rating >= 4 ? 'bg-[#34a853]' : row.rating === 3 ? 'bg-[#fbbc04]' : 'bg-[#ea4335]'}`} style={{ width: `${(row.count / maxRatingCount) * 100}%` }} /></div><span className="w-16 text-right font-semibold">{row.count} vnt.</span></div>)}</div>
+              {plan.id !== 'startas' && <div className="mt-6 bg-[#202124] text-white rounded-2xl p-6 shadow-sm"><div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5"><div><span className="text-xs font-bold uppercase tracking-widest text-[#8ab4f8]">SAVED REVIEWS</span><h2 className="text-2xl font-extrabold mt-2">Sulaikyti {savedReviews} neigiami atsiliepimai</h2><p className="text-sm text-[#bdc1c6] mt-2 max-w-xl">Šie atsiliepimai nebuvo nukreipti į Google, todėl galite su klientais susisiekti privačiai ir išspręsti problemą.</p></div><div className="text-left sm:text-right"><span className="text-4xl font-extrabold text-[#81c995]">{savedReviews}</span><span className="block text-xs text-[#9aa0a6] mt-1">{savedReviewsRange}</span></div></div><div className="mt-5 h-2 bg-[#3c4043] rounded-full overflow-hidden"><div className="h-full bg-[#81c995] rounded-full" style={{ width: `${Math.min(savedReviewsRate, 100)}%` }} /></div><div className="flex justify-between text-xs text-[#9aa0a6] mt-2"><span>{savedReviewsRate}% visų gautų atsiliepimų</span><span>Pagal jūsų nustatytą ribą: {savedReviewsThreshold} žvaigždutės</span></div></div>}
             </div>
           )}
 

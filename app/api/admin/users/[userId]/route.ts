@@ -17,6 +17,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   // Inkrementiniai skaitikliai iš business_stats (sukuria eilutę, jei jos dar nėra)
   const stats = await readOrInitStats(adminClient, userId)
+  const threshold = Math.min(5, Math.max(1, Math.round(Number(target.user.user_metadata?.google_min_rating)) || 4))
+  const { count: savedReviews } = await adminClient
+    .from('feedbacks')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .lt('rating', threshold)
+    .eq('sent_to_google', false)
 
   // Lengvi pagalbiniai duomenys admino peržiūrai: paskutinių 49 d. dati (grafikui)
   // ir šio mėnesio atsiliepimų kiekis (skaičiavimas serverio pusėje, be eilučių grąžinimo)
@@ -36,6 +43,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       user_metadata: target.user.user_metadata || {},
     },
     stats,
+    saved_reviews: savedReviews || 0,
+    saved_reviews_threshold: threshold,
     recent_feedback_dates: (recentResult.data || []).map((row) => row.created_at),
     monthly_feedback_count: monthResult.count ?? 0,
   })
