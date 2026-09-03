@@ -267,8 +267,6 @@ export default function AdminPage() {
                 <button type="button" onClick={savePlanPrices} disabled={pricesSaving} className="mt-4 bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 text-white rounded-xl px-4 py-2.5 text-sm font-semibold">{pricesSaving ? 'Saugoma…' : 'Išsaugoti kainas'}</button>
                 <p className="text-xs text-[#80868b] mt-3">Naujiems klientams kaina pasikeis iškart. Jau aktyvių prenumeratų kaina nepasikeis.</p>
               </div>
-              <div className="rounded-xl bg-[#e8f0fe] p-4 text-sm text-[#3c4043]">Administratorius gali peržiūrėti vartotojų statistiką, peržiūrėti kliento dashboard jo akimis, pratęsti ar nutraukti bandomąjį laikotarpį bei ištrinti paskyras.</div>
-              <div className="rounded-xl bg-[#fef7e0] border border-[#f9df96] p-4 text-sm text-[#b06000]">Stripe mokėjimams prireiks `STRIPE_SECRET_KEY` ir webhook konfigūracijos.</div>
             </div>
           </div>
         )}
