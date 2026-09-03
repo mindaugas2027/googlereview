@@ -1,7 +1,14 @@
 import { Check, Filter, Sparkles, ArrowRight, BarChart3, MessageCircle, QrCode, ShieldCheck, Star, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
+import { PLAN_LIST } from '@/lib/plans';
+import { DEFAULT_PLAN_PRICES, getConfiguredPlanPrices, getPlanWithPrice } from '@/lib/plan-pricing';
+import { getServiceClient } from '@/lib/admin-auth';
 
-export default function Home() {
+export default async function Home() {
+  const serviceClient = getServiceClient();
+  const prices = serviceClient ? await getConfiguredPlanPrices(serviceClient) : DEFAULT_PLAN_PRICES;
+  const plans = PLAN_LIST.map((plan) => getPlanWithPrice(plan, prices));
+
   return (
     <div className="min-h-screen bg-[#f8fafd] text-[#202124] font-sans">
       {/* VIRŠUTINĖ NAVIGACIJA */}
@@ -139,16 +146,12 @@ export default function Home() {
             <p className="text-[#5f6368]">Pradėkite paprastai ir auginkite kartu su savo klientų atsiliepimais.</p>
           </div>
           <div className="grid md:grid-cols-3 gap-5">
-            {[
-              { name: 'Startas', price: '14,99', description: 'Mažoms įmonėms ir individualiems meistrams.', features: ['1 vieta / adresas', '1 QR kodas', 'Neriboti QR nuskaitymai'] },
-              { name: 'Pro', price: '19,99', description: 'Kavinėms, restoranams ir komandoms.', features: ['1 vieta / adresas', 'Neriboti QR kodai (stalams, personalui)', 'QR statistika: kuris kodas surenka daugiausia gerų atsiliepimų'], popular: true },
-              { name: 'Verslas', price: '34,99', description: 'Tinklams ir didelėms įmonėms.', features: ['Iki 5 vietų', 'Neriboti QR kodai', 'QR kodų susiejimas su vietomis'] },
-            ].map((plan) => (
+            {plans.map((plan) => (
               <div key={plan.name} className={`relative bg-white border rounded-2xl p-6 shadow-sm ${plan.popular ? 'border-[#1a73e8] shadow-lg shadow-blue-500/10' : 'border-[#dadce0]'}`}>
                 {plan.popular && <span className="absolute -top-3 left-6 bg-[#1a73e8] text-xs font-bold px-3 py-1 rounded-full text-white">Populiariausias</span>}
                 <h3 className="font-bold text-xl mb-2">{plan.name}</h3>
                 <p className="text-sm text-[#5f6368] min-h-10">{plan.description}</p>
-                <div className="my-6"><span className="text-4xl font-extrabold text-[#202124]">€{plan.price}</span><span className="text-[#5f6368]"> / mėn.</span></div>
+                <div className="my-6"><span className="text-4xl font-extrabold text-[#202124]">{plan.priceLabel}</span><span className="text-[#5f6368]"> / mėn.</span></div>
                 <ul className="space-y-3 text-sm text-[#3c4043] mb-7">
                   {plan.features.map((feature) => <li key={feature} className="flex items-center gap-2"><Check size={16} className="text-[#34a853]" />{feature}</li>)}
                 </ul>
