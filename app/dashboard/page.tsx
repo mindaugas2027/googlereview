@@ -1018,6 +1018,7 @@ export default function DashboardPage() {
               <div className="grid sm:grid-cols-3 gap-4 mb-8">
                 {Object.values(PLANS).map((item) => {
                   const isCurrent = item.id === plan.id;
+                  const canReorderCurrent = isCurrent && subscriptionExpired && !viewAsId;
                   return (
                     <div key={item.id} className={`relative bg-white border rounded-2xl p-5 shadow-sm flex flex-col ${isCurrent ? 'border-[#1a73e8] shadow-lg shadow-blue-500/10' : 'border-[#dadce0]'}`}>
                       {item.popular && <span className="absolute -top-3 left-5 bg-[#1a73e8] text-xs font-bold px-3 py-1 rounded-full text-white">Populiariausias</span>}
@@ -1028,10 +1029,10 @@ export default function DashboardPage() {
                       </ul>
                       <button
                         onClick={() => selectPlan(item.id)}
-                        disabled={isCurrent || checkoutLoading !== null}
-                        className={`w-full py-2.5 rounded-xl text-sm font-semibold transition ${isCurrent ? 'bg-[#e6f4ea] text-[#137333] cursor-default' : 'bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 text-white'}`}
+                        disabled={(isCurrent && !canReorderCurrent) || checkoutLoading !== null}
+                        className={`w-full py-2.5 rounded-xl text-sm font-semibold transition ${isCurrent && !canReorderCurrent ? 'bg-[#e6f4ea] text-[#137333] cursor-default' : 'bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 text-white'}`}
                       >
-                        {isCurrent ? 'Dabartinis planas' : checkoutLoading === item.id ? 'Atidaroma…' : item.priceEur > plan.priceEur ? 'Atnaujinti planą' : 'Pereiti į mažesnį planą'}
+                        {checkoutLoading === item.id ? 'Atidaroma…' : canReorderCurrent ? 'Užsisakyti šį planą' : isCurrent ? 'Dabartinis planas' : item.priceEur > plan.priceEur ? 'Atnaujinti planą' : 'Pereiti į mažesnį planą'}
                       </button>
                     </div>
                   );
