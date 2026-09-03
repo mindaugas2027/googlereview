@@ -220,6 +220,8 @@ export default function DashboardPage() {
 
   const trialDaysLeft = getTrialDaysLeft(user?.user_metadata);
   const subscriptionExpired = trialDaysLeft === 0;
+  const hasPaidSubscription = user?.user_metadata?.subscription_status === 'active'
+    || user?.user_metadata?.subscription_status === 'trialing';
   const cancellationScheduled = user?.user_metadata?.cancel_at_period_end === true;
   const trialTone = trialDaysLeft >= 8
     ? { text: '#137333', background: '#e6f4ea', border: '#b7dfc1' }
@@ -947,10 +949,12 @@ export default function DashboardPage() {
 
           <div className="bg-[#f1f3f4] p-3 rounded-xl mb-6 border border-[#dadce0]">
             <div className="font-semibold text-sm truncate mb-3">{business.name || 'Nustatykite įmonės pavadinimą'}</div>
-            <div className="rounded-lg px-3 py-2" style={{ color: trialTone.text, backgroundColor: trialTone.background, border: `1px solid ${trialTone.border}` }}>
-              <div className="text-[11px] font-bold uppercase tracking-wide">{plan.name}</div>
-              <div className="text-sm font-bold mt-0.5">{trialDaysLeft > 0 ? `Liko ${trialDaysLeft} d.` : 'Bandomasis laikotarpis baigėsi'}</div>
-            </div>
+            {!hasPaidSubscription && (
+              <div className="rounded-lg px-3 py-2" style={{ color: trialTone.text, backgroundColor: trialTone.background, border: `1px solid ${trialTone.border}` }}>
+                <div className="text-[11px] font-bold uppercase tracking-wide">{plan.name}</div>
+                <div className="text-sm font-bold mt-0.5">{trialDaysLeft > 0 ? `Liko ${trialDaysLeft} d.` : 'Bandomasis laikotarpis baigėsi'}</div>
+              </div>
+            )}
           </div>
 
                     <nav className="space-y-1">
