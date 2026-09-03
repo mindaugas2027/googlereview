@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { EMPTY_STATS, FEEDBACK_PAGE_SIZE, normalizeStats, ratingCount, type BusinessStats } from '@/lib/stats';
 import { getPlan, PLANS, type PlanDefinition } from '@/lib/plans';
+import { DEFAULT_PLAN_PRICES, getPlanWithPrice, type PlanPrices } from '@/lib/plan-pricing';
 import {
   BarChart3, Download, Eye, Globe2, LayoutDashboard, LogOut, MapPin,
   Menu, MessageSquare, Pencil, Plus, QrCode, ScanLine, Send, Settings, Sparkles, Star, Trash2, X, Zap, Loader2, ArrowUpRight
@@ -175,8 +176,10 @@ export default function DashboardPage() {
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [savingLocation, setSavingLocation] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [planPrices, setPlanPrices] = useState<PlanPrices>(DEFAULT_PLAN_PRICES);
   // Vartotojo planas — iš user_metadata.plan_id (keičiamas Mokėjimų skiltyje / admino)
   const plan: PlanDefinition = getPlan(typeof user?.user_metadata?.plan_id === 'string' ? user.user_metadata.plan_id : undefined);
+  const pricedPlan = getPlanWithPrice(plan, planPrices);
   const hasQrFeedbackFilters = plan.id !== 'startas';
   // Viso laikotarpio agregatai iš inkrementinių skaitiklių (business_stats lentelės,
   // kurią palaiko Supabase trigger'iai) — frontend'e jokių pilnų sąrašų skaičiavimų.
@@ -330,6 +333,18 @@ export default function DashboardPage() {
 
     checkUser();
   }, [router]);
+
+  useEffect(() => {
+    if (!user || viewAsId) return;
+    const loadPlanPrices = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const response = await fetch('/api/plans', { headers: { Authorization: `Bearer ${session.access_token}` } });
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload?.prices) setPlanPrices(payload.prices);
+    };
+    void loadPlanPrices();
+  }, [user, viewAsId]);
 
   // Admin API užklausos, kai peržiūrimas kliento dashboard
   const adminApiRequest = async (
@@ -1028,7 +1043,7 @@ export default function DashboardPage() {
                     <div key={item.id} className={`relative bg-white border rounded-2xl p-5 shadow-sm flex flex-col ${isCurrent ? 'border-[#1a73e8] shadow-lg shadow-blue-500/10' : 'border-[#dadce0]'}`}>
                       {item.popular && <span className="absolute -top-3 left-5 bg-[#1a73e8] text-xs font-bold px-3 py-1 rounded-full text-white">Populiariausias</span>}
                       <h3 className="font-bold text-lg">{item.name}</h3>
-                      <div className="my-3"><span className="text-3xl font-extrabold text-[#202124]">{item.priceLabel}</span><span className="text-[#5f6368] text-sm"> / mėn.</span></div>
+                      <div className="my-3"><span className="text-3xl font-extrabold text-[#202124]">{getPlanWithPrice(item, planPrices).priceLabel}</span><span className="text-[#5f6368] text-sm"> / mėn.</span></div>
                       <ul className="space-y-2 text-sm text-[#3c4043] mb-5 flex-1">
                         {item.features.map((feature) => <li key={feature} className="flex items-start gap-2"><Star size={14} className="text-[#34a853] mt-0.5 shrink-0" fill="currentColor" />{feature}</li>)}
                       </ul>
@@ -1037,7 +1052,7 @@ export default function DashboardPage() {
                         disabled={(isCurrent && !canReorderCurrent) || checkoutLoading !== null}
                         className={`w-full py-2.5 rounded-xl text-sm font-semibold transition ${isCurrent && !canReorderCurrent ? 'bg-[#e6f4ea] text-[#137333] cursor-default' : 'bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 text-white'}`}
                       >
-                        {checkoutLoading === item.id ? 'Atidaroma…' : canReorderCurrent ? 'Užsisakyti šį planą' : isCurrent ? 'Dabartinis planas' : item.priceEur > plan.priceEur ? 'Atnaujinti planą' : 'Pereiti į mažesnį planą'}
+                        {checkoutLoading === item.id ? 'Atidaroma…' : canReorderCurrent ? 'Užsisakyti šį planą' : isCurrent ? 'Dabartinis planas' : item.priceEur > pricedPlan.priceEur ? 'Atnaujinti planą' : 'Pereiti į mažesnį planą'}
                       </button>
                     </div>
                   );

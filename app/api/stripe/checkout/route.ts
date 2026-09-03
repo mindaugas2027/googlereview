@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPlan, type PlanId } from '@/lib/plans'
 import { requireServiceUser } from '@/lib/admin-auth'
 import { getStripeClient, getStripePriceData } from '@/lib/stripe'
+import { getConfiguredPlanPrices, getPlanWithPrice } from '@/lib/plan-pricing'
 
 export async function POST(request: NextRequest) {
   const guard = await requireServiceUser(request)
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nežinomas planas.' }, { status: 400 })
     }
 
-    const plan = getPlan(body.planId as PlanId)
+    const plan = getPlanWithPrice(getPlan(body.planId as PlanId), await getConfiguredPlanPrices(guard.client))
     const stripe = getStripeClient()
     const origin = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
     const session = await stripe.checkout.sessions.create({

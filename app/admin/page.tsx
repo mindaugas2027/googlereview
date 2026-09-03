@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_EMAIL, getTrialDaysLeft } from '@/lib/admin-auth'
 import { PLAN_LIST } from '@/lib/plans'
+import { DEFAULT_PLAN_PRICES, getPlanWithPrice, type PlanPrices } from '@/lib/plan-pricing'
 import { CreditCard, ExternalLink, Loader2, LogOut, Search, Settings, Sparkles, Users, X } from 'lucide-react'
 type AdminUser = {
   id: string
@@ -36,6 +37,8 @@ export default function AdminPage() {
   const [extendDays, setExtendDays] = useState(30)
   const [extendDate, setExtendDate] = useState('')
   const [planSaving, setPlanSaving] = useState(false)
+  const [planPrices, setPlanPrices] = useState<PlanPrices>(DEFAULT_PLAN_PRICES)
+  const [pricesSaving, setPricesSaving] = useState(false)
 
   const changePlan = async (user: AdminUser, planId: string) => {
     setPlanSaving(true)
@@ -77,10 +80,35 @@ export default function AdminPage() {
         return
       }
       setUsers(payload.users)
+      const pricesResponse = await fetch('/api/admin/plans', { headers: { Authorization: `Bearer ${session.access_token}` } })
+      const pricesPayload = await pricesResponse.json().catch(() => null)
+      if (pricesResponse.ok && pricesPayload?.prices) setPlanPrices(pricesPayload.prices)
     } catch {
       setError('Nepavyko pasiekti serverio. Patikrinkite interneto ryšį.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const savePlanPrices = async () => {
+    setPricesSaving(true)
+    setError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const response = await fetch('/api/admin/plans', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prices: planPrices }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) { setError(payload?.error || 'Kainų išsaugoti nepavyko.'); return }
+      setPlanPrices(payload.prices)
+      setActionMessage('Planų kainos išsaugotos. Nauji užsakymai naudos šias kainas, esamos prenumeratos nepasikeis.')
+    } catch {
+      setError('Nepavyko pasiekti serverio. Patikrinkite interneto ryšį.')
+    } finally {
+      setPricesSaving(false)
     }
   }
 
@@ -223,6 +251,22 @@ export default function AdminPage() {
             <h2 className="text-xl font-bold">Admin nustatymai</h2>
             <p className="text-sm text-[#5f6368] mt-2">Admin paskyra: {ADMIN_EMAIL}</p>
             <div className="mt-5 space-y-3">
+              <div className="rounded-xl border border-[#dadce0] p-4">
+                <h3 className="font-bold text-sm text-[#1a73e8] mb-3">Planų kainos</h3>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  {PLAN_LIST.map((item) => (
+                    <label key={item.id} className="text-xs font-semibold text-[#5f6368]">
+                      {item.name} / mėn.
+                      <div className="flex items-center gap-2 mt-1">
+                        <input type="number" min="0.01" max="10000" step="0.01" value={planPrices[item.id]} onChange={(event) => setPlanPrices((current) => ({ ...current, [item.id]: Number(event.target.value) }))} className="w-full border border-[#dadce0] rounded-xl p-2.5 text-sm text-[#202124]" />
+                        <span className="text-sm">€</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <button type="button" onClick={savePlanPrices} disabled={pricesSaving} className="mt-4 bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 text-white rounded-xl px-4 py-2.5 text-sm font-semibold">{pricesSaving ? 'Saugoma…' : 'Išsaugoti kainas'}</button>
+                <p className="text-xs text-[#80868b] mt-3">Naujiems klientams kaina pasikeis iškart. Jau aktyvių prenumeratų kaina nepasikeis.</p>
+              </div>
               <div className="rounded-xl bg-[#e8f0fe] p-4 text-sm text-[#3c4043]">Administratorius gali peržiūrėti vartotojų statistiką, peržiūrėti kliento dashboard jo akimis, pratęsti ar nutraukti bandomąjį laikotarpį bei ištrinti paskyras.</div>
               <div className="rounded-xl bg-[#fef7e0] border border-[#f9df96] p-4 text-sm text-[#b06000]">Stripe mokėjimams prireiks `STRIPE_SECRET_KEY` ir webhook konfigūracijos.</div>
             </div>
@@ -265,7 +309,7 @@ export default function AdminPage() {
                         className={`rounded-xl border p-3 text-left transition ${selectedUser.plan_id || 'startas' === item.id ? 'border-[#1a73e8] bg-[#e8f0fe]' : 'border-[#dadce0] hover:border-[#1a73e8]'} disabled:opacity-70 disabled:cursor-default`}
                       >
                         <span className="block text-sm font-bold">{item.name}</span>
-                        <span className="block text-xs text-[#5f6368] mt-0.5">{item.priceLabel} / mėn.</span>
+                        <span className="block text-xs text-[#5f6368] mt-0.5">{getPlanWithPrice(item, planPrices).priceLabel} / mėn.</span>
                         <span className="block text-[11px] text-[#80868b] mt-1">{item.maxQrCodes === -1 ? 'Neriboti QR' : `${item.maxQrCodes} QR`} · {item.maxLocations === 1 ? '1 vieta' : `iki ${item.maxLocations} vietų`}</span>
                       </button>
                     ))}
