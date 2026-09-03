@@ -71,6 +71,7 @@ type QrCodeRow = {
   positive: number;
   negative: number;
   average: number | null;
+  five_stars: number;
 };
 
 type LocationRow = {
@@ -225,6 +226,23 @@ export default function DashboardPage() {
   const visibleQrCodes = qrLocationFilter
     ? qrCodes.filter((code) => code.location_id === qrLocationFilter)
     : qrCodes;
+  const qrLeaders = [...qrCodes]
+    .filter((code) => code.five_stars > 0 || code.feedbacks > 0)
+    .sort((first, second) => second.five_stars - first.five_stars || second.feedbacks - first.feedbacks)
+    .slice(0, 10);
+  const locationComparisons = locations.map((location) => {
+    const locationCodes = qrCodes.filter((code) => code.location_id === location.id);
+    const scans = locationCodes.reduce((total, code) => total + code.scans, 0);
+    const feedbacks = locationCodes.reduce((total, code) => total + code.feedbacks, 0);
+    const ratingPoints = locationCodes.reduce((total, code) => total + (code.average || 0) * code.feedbacks, 0);
+    return {
+      ...location,
+      scans,
+      feedbacks,
+      conversion: scans ? Math.round((feedbacks / scans) * 100) : 0,
+      average: feedbacks ? ratingPoints / feedbacks : null,
+    };
+  }).sort((first, second) => second.conversion - first.conversion || (second.average || 0) - (first.average || 0));
 
   const trialDaysLeft = getTrialDaysLeft(user?.user_metadata);
   const subscriptionExpired = trialDaysLeft === 0;
@@ -414,7 +432,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user || subscriptionExpired) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sąmoningai krauname QR/vietų duomenis tik atidarius tab'ą
-    if (page === 'qr' || page === 'locations' || page === 'feedback') void fetchQrData();
+    if (page === 'qr' || page === 'locations' || page === 'feedback' || page === 'analytics') void fetchQrData();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pakanka reaguoti į tab'ą ir vartotoją
   }, [page, user?.id, subscriptionExpired]);
 
@@ -1288,6 +1306,8 @@ export default function DashboardPage() {
               <div className={`grid sm:grid-cols-2 ${plan.id === 'startas' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'} gap-4 mb-6`}>{[{ label: 'Konversija į atsiliepimą', value: `${reviewConversion}%`, change: `${statsTotal} iš ${stats.total_qr_scans} nuskaitymų` }, { label: 'Teigiami vertinimai', value: `${positiveRate}%`, change: `${positiveFeedbacks} atsiliepimai virš slenksčio` }, { label: 'Atsiliepimų vidurkis', value: averageRating === '—' ? '—' : `${averageRating} / 5`, change: `${statsTotal} įvertinimai` }, { label: 'Nukreipta į Google', value: googleRedirects.toString(), change: 'realūs paspaudimai' }, ...(plan.id !== 'startas' ? [{ label: 'Sulaikyti atsiliepimai', value: savedReviews.toString(), change: `${savedReviewsRate}% visų atsiliepimų` }] : [])].map((stat) => <div key={stat.label} className="bg-white border border-[#dadce0] rounded-2xl p-5 shadow-sm"><p className="text-xs text-[#5f6368]">{stat.label}</p><div className="flex items-end justify-between mt-3"><span className="text-2xl font-extrabold">{stat.value}</span><span className="text-xs font-bold text-[#137333]">{stat.change}</span></div></div>)}</div>
               <div className="bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><h2 className="font-bold text-lg">Vertinimų pasiskirstymas</h2><p className="text-sm text-[#5f6368] mt-1 mb-6">Viso laikotarpio gautas realus klientų įvertinimų skaičius</p>{ratingDistribution.map((row) => <div key={row.rating} className="flex items-center gap-3 mb-4 text-sm"><span className="w-28 text-[#5f6368]">{row.rating} žvaigždutės</span><div className="flex-1 h-2 bg-[#f1f3f4] rounded-full overflow-hidden"><div className={`h-full rounded-full ${row.rating >= 4 ? 'bg-[#34a853]' : row.rating === 3 ? 'bg-[#fbbc04]' : 'bg-[#ea4335]'}`} style={{ width: `${(row.count / maxRatingCount) * 100}%` }} /></div><span className="w-16 text-right font-semibold">{row.count} vnt.</span></div>)}</div>
               {plan.id !== 'startas' && <div className="mt-6 bg-[#202124] text-white rounded-2xl p-6 shadow-sm"><div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5"><div><h2 className="text-2xl font-extrabold mt-2">Sulaikyta neigiamų atsiliepimų: {savedReviews}</h2></div><div className="text-left sm:text-right"><span className="text-4xl font-extrabold text-[#81c995]">{savedReviews}</span><span className="block text-xs text-[#9aa0a6] mt-1">{savedReviewsRange}</span></div></div><div className="mt-5 h-2 bg-[#3c4043] rounded-full overflow-hidden"><div className="h-full bg-[#81c995] rounded-full" style={{ width: `${Math.min(savedReviewsRate, 100)}%` }} /></div><div className="flex justify-between text-xs text-[#9aa0a6] mt-2"><span>{savedReviewsRate}% visų gautų atsiliepimų</span><span>Pagal jūsų nustatytą ribą: {savedReviewsThreshold} žvaigždutės</span></div></div>}
+              {plan.id !== 'startas' && <div className="mt-6 bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><h2 className="font-bold text-lg">Komandos lyderiai</h2><p className="text-sm text-[#5f6368] mt-1 mb-5">QR kodai, surinkę daugiausiai 5 žvaigždučių atsiliepimų.</p>{qrLeaders.length > 0 ? <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-[#dadce0] text-left text-xs text-[#5f6368]"><th className="pb-3 pr-4">Vieta</th><th className="pb-3 pr-4">QR kodas / darbuotojas</th><th className="pb-3 pr-4 text-right">5 žvaigždutės</th><th className="pb-3 text-right">Visi atsiliepimai</th></tr></thead><tbody>{qrLeaders.map((code, index) => <tr key={code.id} className="border-b border-[#f1f3f4] last:border-0"><td className="py-3 pr-4 font-bold text-[#1a73e8]">{index + 1} vieta</td><td className="py-3 pr-4 font-semibold">{code.label}</td><td className="py-3 pr-4 text-right font-bold text-[#137333]">{code.five_stars}</td><td className="py-3 text-right text-[#5f6368]">{code.feedbacks}</td></tr>)}</tbody></table></div> : <p className="text-sm text-[#80868b]">Kol kas nėra pakankamai QR atsiliepimų lyderiams parodyti.</p>}</div>}
+              {plan.id === 'verslas' && <div className="mt-6 bg-white border border-[#dadce0] rounded-2xl p-6 shadow-sm"><h2 className="font-bold text-lg">Vietų palyginimas</h2><p className="text-sm text-[#5f6368] mt-1 mb-5">Filialai surikiuoti pagal konversiją, o reitingas padeda matyti bendrą klientų vertinimą.</p>{locationComparisons.length > 0 ? <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-[#dadce0] text-left text-xs text-[#5f6368]"><th className="pb-3 pr-4">Filialas</th><th className="pb-3 pr-4 text-right">Konversija</th><th className="pb-3 pr-4 text-right">Reitingas</th><th className="pb-3 text-right">Atsiliepimai</th></tr></thead><tbody>{locationComparisons.map((location, index) => <tr key={location.id} className="border-b border-[#f1f3f4] last:border-0"><td className="py-3 pr-4"><span className="font-semibold">{location.name}</span>{index === 0 && <span className="ml-2 text-[11px] font-bold text-[#137333] bg-[#e6f4ea] rounded-full px-2 py-1">Geriausia</span>}{index === locationComparisons.length - 1 && locationComparisons.length > 1 && <span className="ml-2 text-[11px] font-bold text-[#b06000] bg-[#fef7e0] rounded-full px-2 py-1">Reikia dėmesio</span>}</td><td className="py-3 pr-4 text-right font-bold text-[#1967d2]">{location.conversion}%</td><td className="py-3 pr-4 text-right font-bold">{location.average === null ? '—' : `${location.average.toFixed(1)} / 5`}</td><td className="py-3 text-right text-[#5f6368]">{location.feedbacks}</td></tr>)}</tbody></table></div> : <p className="text-sm text-[#80868b]">Pridėkite bent vieną filialą ir susiekite su juo QR kodą.</p>}</div>}
             </div>
           )}
 

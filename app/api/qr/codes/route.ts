@@ -61,9 +61,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Agreguota statistika iš DB funkcijų (be eilučių grąžinimo)
-    const [scanResult, feedbackResult] = await Promise.all([
+    const [scanResult, feedbackResult, fiveStarResult] = await Promise.all([
       client.rpc('qr_scan_stats', { p_user: userId }),
       client.rpc('qr_feedback_stats', { p_user: userId, p_threshold: threshold }),
+      client.from('feedbacks').select('qr_code_id, rating').eq('user_id', userId).eq('rating', 5),
     ])
     const scansByQr = new Map<string, number>()
     for (const row of (scanResult.data || []) as Array<{ qr_code_id: string | null; scans: number }>) {
@@ -80,6 +81,10 @@ export async function GET(request: NextRequest) {
         })
       }
     }
+    const fiveStarsByQr = new Map<string, number>()
+    for (const row of fiveStarResult.data || []) {
+      if (row.qr_code_id) fiveStarsByQr.set(row.qr_code_id, (fiveStarsByQr.get(row.qr_code_id) || 0) + 1)
+    }
 
     const rows = qrCodes.map((code) => {
       const feedback = feedbackByQr.get(code.id)
@@ -94,6 +99,7 @@ export async function GET(request: NextRequest) {
         positive: feedback?.positive ?? 0,
         negative: feedback?.negative ?? 0,
         average: feedback?.average ?? null,
+        five_stars: fiveStarsByQr.get(code.id) ?? 0,
       }
     })
 
