@@ -50,6 +50,9 @@ type DashboardUser = {
     trial_started_at?: string;
     trial_end?: string;
     trial_days?: number;
+    stripe_subscription_id?: string;
+    subscription_status?: string;
+    cancel_at_period_end?: boolean;
     [key: string]: unknown;
   };
 };
@@ -217,6 +220,7 @@ export default function DashboardPage() {
 
   const trialDaysLeft = getTrialDaysLeft(user?.user_metadata);
   const subscriptionExpired = trialDaysLeft === 0;
+  const cancellationScheduled = user?.user_metadata?.cancel_at_period_end === true;
   const trialTone = trialDaysLeft >= 8
     ? { text: '#137333', background: '#e6f4ea', border: '#b7dfc1' }
     : trialDaysLeft >= 4
@@ -721,6 +725,31 @@ export default function DashboardPage() {
     setProfileMessage('Prenumerata pratęsta 14 dienų.');
   };
 
+  const cancelSubscription = async () => {
+    if (!user || viewAsId || cancellationScheduled) return;
+    if (!window.confirm('Ar tikrai norite atšaukti prenumeratą? Ja galėsite naudotis iki dabartinio laikotarpio pabaigos.')) return;
+    setCheckoutLoading('cancel');
+    setProfileMessage(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Sesija nerasta. Prisijunkite iš naujo.');
+      const response = await fetch('/api/stripe/cancel', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || 'Prenumeratos atšaukti nepavyko.');
+      setUser((currentUser) => currentUser
+        ? { ...currentUser, user_metadata: { ...currentUser.user_metadata, cancel_at_period_end: true } }
+        : currentUser);
+      setProfileMessage('Prenumerata atšaukta. Ja galėsite naudotis iki laikotarpio pabaigos.');
+    } catch (cause) {
+      setProfileMessage(cause instanceof Error ? cause.message : 'Prenumeratos atšaukti nepavyko.');
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
   const reviewUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/review?business=${encodeURIComponent(user?.id || '')}&google=${encodeURIComponent(business.google_review_url)}&threshold=${business.google_min_rating}&logo=${encodeURIComponent(business.logo_url)}`
     : '';
@@ -976,8 +1005,8 @@ export default function DashboardPage() {
             <div className="max-w-2xl mx-auto mt-10 bg-white border border-[#f5b7b1] rounded-2xl p-8 text-center shadow-sm">
               <span className="h-14 w-14 rounded-2xl bg-[#fce8e6] text-[#c5221f] grid place-items-center mx-auto mb-5"><Zap size={25} /></span>
               <h1 className="text-2xl font-extrabold mb-3">Prenumerata baigėsi</h1>
-              <p className="text-sm text-[#5f6368] leading-relaxed max-w-md mx-auto">Pratęskite prenumeratą mokėjimų skiltyje, kad galėtumėte toliau naudotis sistema.</p>
-              <button onClick={() => setPage('billing')} className="mt-6 bg-[#1a73e8] hover:bg-[#1769d1] text-white px-5 py-2.5 rounded-xl text-sm font-semibold">Pratęsti prenumeratą</button>
+              <p className="text-sm text-[#5f6368] leading-relaxed max-w-md mx-auto">Pasirinkite planą mokėjimų skiltyje, kad galėtumėte toliau naudotis sistema.</p>
+              <button onClick={() => setPage('billing')} className="mt-6 bg-[#1a73e8] hover:bg-[#1769d1] text-white px-5 py-2.5 rounded-xl text-sm font-semibold">Pasirinkti planą</button>
             </div>
           )}
 
@@ -1002,16 +1031,20 @@ export default function DashboardPage() {
                         disabled={isCurrent || checkoutLoading !== null}
                         className={`w-full py-2.5 rounded-xl text-sm font-semibold transition ${isCurrent ? 'bg-[#e6f4ea] text-[#137333] cursor-default' : 'bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 text-white'}`}
                       >
-                        {isCurrent ? 'Jūsų planas' : checkoutLoading === item.id ? 'Atidaroma…' : 'Mokėti su Stripe'}
+                        {isCurrent ? 'Dabartinis planas' : checkoutLoading === item.id ? 'Atidaroma…' : item.priceEur > plan.priceEur ? 'Atnaujinti planą' : 'Pereiti į mažesnį planą'}
                       </button>
                     </div>
                   );
                 })}
               </div>
               <div className={`rounded-2xl p-6 border ${subscriptionExpired ? 'bg-[#fce8e6] border-[#f5b7b1]' : 'bg-[#e6f4ea] border-[#b7dfc1]'}`}>
-                <div className="flex items-center justify-between gap-4 mb-3"><div><p className="text-xs font-bold uppercase tracking-wide text-[#5f6368]">Dabartinis planas</p><h2 className="text-xl font-extrabold mt-1">{plan.name}</h2></div><span className={`text-sm font-bold ${subscriptionExpired ? 'text-[#c5221f]' : 'text-[#137333]'}`}>{subscriptionExpired ? 'Baigėsi' : `Liko ${trialDaysLeft} d.`}</span></div>
-                <p className="text-sm text-[#3c4043]">{subscriptionExpired ? 'Pratęskite prenumeratą ir vėl gaukite prieigą prie visų savo įmonės duomenų.' : 'Jūsų bandomasis laikotarpis galioja. Pasibaigus laikotarpiui čia galėsite jį pratęsti.'}</p>
-                <button onClick={renewSubscription} className="mt-6 w-full bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl py-3 text-sm font-semibold">{subscriptionExpired ? 'Pratęsti 14 dienų' : 'Pratęsti prenumeratą'}</button>
+                <div className="flex items-center justify-between gap-4 mb-3"><div><p className="text-xs font-bold uppercase tracking-wide text-[#5f6368]">Dabartinis planas</p><h2 className="text-xl font-extrabold mt-1">{plan.name}</h2></div><span className={`text-sm font-bold ${subscriptionExpired ? 'text-[#c5221f]' : 'text-[#137333]'}`}>{subscriptionExpired ? 'Baigėsi' : cancellationScheduled ? `Atšaukta · liko ${trialDaysLeft} d.` : `Liko ${trialDaysLeft} d.`}</span></div>
+                <p className="text-sm text-[#3c4043]">{subscriptionExpired ? 'Pasirinkite planą ir vėl gaukite prieigą prie visų savo įmonės duomenų.' : cancellationScheduled ? 'Prenumerata atšaukta, tačiau sistema liks pasiekiama iki nurodyto laikotarpio pabaigos.' : 'Jūsų bandomasis laikotarpis galioja. Liko dienų galite matyti čia.'}</p>
+                {viewAsId ? (
+                  <button onClick={renewSubscription} className="mt-6 w-full bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl py-3 text-sm font-semibold">Pratęsti 14 dienų</button>
+                ) : !subscriptionExpired && !cancellationScheduled ? (
+                  <button onClick={cancelSubscription} disabled={checkoutLoading !== null} className="mt-6 w-full bg-white hover:bg-[#fce8e6] border border-[#c5221f] text-[#c5221f] disabled:opacity-60 rounded-xl py-3 text-sm font-semibold">{checkoutLoading === 'cancel' ? 'Atšaukiama…' : 'Atšaukti prenumeratą'}</button>
+                ) : null}
               </div>
               {profileMessage && <p className="text-sm text-[#137333] mt-4">{profileMessage}</p>}
             </div>

@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
           stripe_customer_id: typeof session.customer === 'string' ? session.customer : null,
           stripe_subscription_id: typeof session.subscription === 'string' ? session.subscription : null,
           subscription_status: 'active',
+          cancel_at_period_end: false,
         })
       }
     }
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
           trial_end: event.type === 'customer.subscription.deleted' ? new Date(Date.now() - 60 * 1000).toISOString() : periodEnd,
           subscription_status: subscription.status,
           stripe_subscription_id: subscription.id,
+          cancel_at_period_end: event.type === 'customer.subscription.deleted' ? false : subscription.cancel_at_period_end,
         })
       }
     }
