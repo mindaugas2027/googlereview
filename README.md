@@ -33,16 +33,28 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ### Stripe prenumeratos
 
-Mokėjimų skiltis naudoja Stripe Checkout su mėnesinėmis EUR prenumeratomis. Į `.env.local` arba Vercel Environment Variables pridėkite:
+Mokėjimų skiltis naudoja Stripe Checkout su mėnesinėmis EUR prenumeratomis. Produkcijoje naudokite domeną `https://getreview.lt`. Į Vercel Environment Variables pridėkite:
 
 ```env
-NEXT_PUBLIC_APP_URL=https://jusu-domenas.lt
+NEXT_PUBLIC_APP_URL=https://getreview.lt
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-Stripe Dashboard sukurkite webhook endpointą `https://jusu-domenas.lt/api/stripe/webhook` ir įjunkite įvykius `checkout.session.completed`, `customer.subscription.updated` bei `customer.subscription.deleted`. `STRIPE_SECRET_KEY` ir `STRIPE_WEBHOOK_SECRET` niekada nedėkite į kliento kodą.
+Stripe Dashboard sukurkite webhook endpointą `https://getreview.lt/api/stripe/webhook` ir įjunkite įvykius `checkout.session.completed`, `customer.subscription.updated` bei `customer.subscription.deleted`. `STRIPE_SECRET_KEY` ir `STRIPE_WEBHOOK_SECRET` niekada nedėkite į kliento kodą.
+
+### Vienkartinių produktų parduotuvė
+
+Supabase SQL Editor’yje vieną kartą paleiskite `supabase/migration-store.sql`. Tai sukuria produktų ir užsakymų lenteles bei `store-products` nuotraukų bucket’ą. Po migracijos admin pusėje atsiras „Parduotuvė“ tab’as; aktyvūs produktai automatiškai rodomi landing puslapio apačioje. Stripe Checkout vienkartiniams pirkimams paprašo pristatymo adreso, o apmokėti užsakymai išsaugomi `store_orders` lentelėje.
+
+### Domeno prijungimas
+
+1. Vercel projekte atidarykite **Settings → Domains** ir pridėkite `getreview.lt` bei `www.getreview.lt`.
+2. Domeno DNS valdyme įrašykite Vercel parodytus A/CNAME įrašus. Rekomenduojama pagrindiniu domenu pasirinkti `getreview.lt`, o `www` nukreipti į jį.
+3. Vercel Environment Variables nustatykite `NEXT_PUBLIC_APP_URL=https://getreview.lt` ir atlikite Redeploy.
+4. Supabase **Authentication → URL Configuration** skiltyje nustatykite Site URL į `https://getreview.lt` ir įtraukite `https://getreview.lt/**` į Redirect URLs.
+5. Stripe webhook URL naudokite `https://getreview.lt/api/stripe/webhook`; po domeno prijungimo patikrinkite Stripe Dashboard webhook testą.
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 

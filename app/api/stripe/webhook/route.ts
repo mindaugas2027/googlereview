@@ -27,6 +27,26 @@ export async function POST(request: NextRequest) {
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session
+      const storeProductId = session.metadata?.store_product_id
+      if (storeProductId) {
+        const adminClient = getServiceClient()
+        if (!adminClient) throw new Error('Trūksta Supabase serverio konfigūracijos.')
+        const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1 })
+        const lineItem = lineItems.data[0]
+        const shipping = session.collected_information?.shipping_details
+        const { error } = await adminClient.from('store_orders').upsert({
+          stripe_session_id: session.id,
+          product_id: storeProductId,
+          product_name: lineItem?.description || 'Parduotuvės produktas',
+          quantity: lineItem?.quantity || 1,
+          amount_cents: session.amount_total || 0,
+          customer_email: session.customer_details?.email || session.customer_email || null,
+          shipping_name: shipping?.name || null,
+          shipping_address: shipping?.address || null,
+          status: session.payment_status || 'paid',
+        }, { onConflict: 'stripe_session_id' })
+        if (error) throw error
+      }
       const userId = session.metadata?.user_id
       const planId = session.metadata?.plan_id
       if (userId && planId) {

@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { ADMIN_EMAIL, getTrialDaysLeft } from '@/lib/admin-auth'
 import { PLAN_LIST } from '@/lib/plans'
 import { DEFAULT_PLAN_PRICES, getPlanWithPrice, type PlanPrices } from '@/lib/plan-pricing'
-import { CreditCard, ExternalLink, Loader2, LogOut, Search, Settings, Sparkles, Users, X } from 'lucide-react'
+import { CreditCard, ExternalLink, ImagePlus, Loader2, LogOut, Search, Settings, ShoppingBag, Sparkles, Users, X } from 'lucide-react'
 type AdminUser = {
   id: string
   email?: string
@@ -18,11 +18,23 @@ type AdminUser = {
   trial_end?: string | null
   trial_days?: number | null
   plan_id?: string | null
+  subscription_status?: string | null
+  is_paid: boolean
   monthly_goal?: number
   feedback_count: number
   google_redirects: number
   qr_scans: number
   average_rating: number | null
+}
+
+type StoreProduct = {
+  id: string
+  name: string
+  description: string
+  image_url: string | null
+  price_cents: number
+  active: boolean
+  sort_order: number
 }
 
 export default function AdminPage() {
@@ -31,7 +43,8 @@ export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [query, setQuery] = useState('')
-  const [tab, setTab] = useState<'users' | 'settings'>('users')
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all')
+  const [tab, setTab] = useState<'users' | 'store' | 'settings'>('users')
   const [error, setError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
   const [extendDays, setExtendDays] = useState(30)
@@ -39,6 +52,15 @@ export default function AdminPage() {
   const [planSaving, setPlanSaving] = useState(false)
   const [planPrices, setPlanPrices] = useState<PlanPrices>(DEFAULT_PLAN_PRICES)
   const [pricesSaving, setPricesSaving] = useState(false)
+  const [products, setProducts] = useState<StoreProduct[]>([])
+  const [productSaving, setProductSaving] = useState(false)
+  const [editingProductId, setEditingProductId] = useState<string | null>(null)
+  const [productName, setProductName] = useState('')
+  const [productDescription, setProductDescription] = useState('')
+  const [productPrice, setProductPrice] = useState('')
+  const [productSortOrder, setProductSortOrder] = useState('0')
+  const [productActive, setProductActive] = useState(true)
+  const [productImage, setProductImage] = useState<File | null>(null)
 
   const changePlan = async (user: AdminUser, planId: string) => {
     setPlanSaving(true)
@@ -80,6 +102,9 @@ export default function AdminPage() {
         return
       }
       setUsers(payload.users)
+      const productsResponse = await fetch('/api/admin/products', { headers: { Authorization: `Bearer ${session.access_token}` } })
+      const productsPayload = await productsResponse.json().catch(() => null)
+      if (productsResponse.ok && Array.isArray(productsPayload?.products)) setProducts(productsPayload.products)
       const pricesResponse = await fetch('/api/admin/plans', { headers: { Authorization: `Bearer ${session.access_token}` } })
       const pricesPayload = await pricesResponse.json().catch(() => null)
       if (pricesResponse.ok && pricesPayload?.prices) setPlanPrices(pricesPayload.prices)
@@ -112,6 +137,66 @@ export default function AdminPage() {
     }
   }
 
+  const resetProductForm = () => {
+    setEditingProductId(null)
+    setProductName('')
+    setProductDescription('')
+    setProductPrice('')
+    setProductSortOrder('0')
+    setProductActive(true)
+    setProductImage(null)
+  }
+
+  const editProduct = (product: StoreProduct) => {
+    setEditingProductId(product.id)
+    setProductName(product.name)
+    setProductDescription(product.description)
+    setProductPrice((product.price_cents / 100).toFixed(2))
+    setProductSortOrder(String(product.sort_order))
+    setProductActive(product.active)
+    setProductImage(null)
+  }
+
+  const saveProduct = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setProductSaving(true)
+    setError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const formData = new FormData()
+      if (editingProductId) formData.append('id', editingProductId)
+      formData.append('name', productName)
+      formData.append('description', productDescription)
+      formData.append('price', productPrice)
+      formData.append('sortOrder', productSortOrder)
+      formData.append('active', String(productActive))
+      if (productImage) formData.append('image', productImage)
+      const response = await fetch('/api/admin/products', { method: editingProductId ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${session.access_token}` }, body: formData })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) { setError(payload?.error || 'Produkto išsaugoti nepavyko.'); return }
+      setProducts((current) => editingProductId ? current.map((item) => item.id === editingProductId ? payload.product : item) : [...current, payload.product])
+      setActionMessage(editingProductId ? 'Produktas atnaujintas.' : 'Produktas pridėtas. Jis rodomas landing puslapio apačioje.')
+      resetProductForm()
+    } catch {
+      setError('Nepavyko pasiekti serverio. Patikrinkite interneto ryšį.')
+    } finally {
+      setProductSaving(false)
+    }
+  }
+
+  const deleteProduct = async (product: StoreProduct) => {
+    if (!window.confirm(`Ar tikrai norite ištrinti „${product.name}“?`)) return
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    const response = await fetch('/api/admin/products', { method: 'DELETE', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: product.id }) })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) { setError(payload?.error || 'Produkto ištrinti nepavyko.'); return }
+    setProducts((current) => current.filter((item) => item.id !== product.id))
+    setActionMessage('Produktas ištrintas.')
+    if (editingProductId === product.id) resetProductForm()
+  }
+
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pradinis vartotojų sąrašo įkėlimas prisijungus
   useEffect(() => { loadUsers() }, [])
 
@@ -125,7 +210,12 @@ export default function AdminPage() {
     return () => clearTimeout(timer)
   }, [loading])
 
-  const filteredUsers = useMemo(() => users.filter((user) => `${user.company_name} ${user.first_name} ${user.email}`.toLowerCase().includes(query.toLowerCase())), [users, query])
+  const filteredUsers = useMemo(() => users.filter((user) => {
+    const matchesQuery = `${user.company_name} ${user.first_name} ${user.email}`.toLowerCase().includes(query.toLowerCase())
+    const matchesPayment = paymentFilter === 'all' || (paymentFilter === 'paid' ? user.is_paid : !user.is_paid)
+    return matchesQuery && matchesPayment
+  }), [users, query, paymentFilter])
+  const paidUsersCount = users.filter((user) => user.is_paid).length
 
   const runUserAction = async (action: 'extend_trial' | 'expire_trial' | 'delete_user', user: AdminUser, opts?: { days?: number; endDate?: string }) => {
     if (action === 'delete_user' && !window.confirm(`Ar tikrai norite ištrinti ${user.company_name} paskyrą?`)) return
@@ -174,6 +264,7 @@ export default function AdminPage() {
         <nav className="space-y-2">
           {[
             { id: 'users', label: 'Visi vartotojai', icon: Users },
+            { id: 'store', label: 'Parduotuvė', icon: ShoppingBag },
             { id: 'settings', label: 'Admin nustatymai', icon: Settings },
           ].map((item) => (
             <button key={item.id} onClick={() => setTab(item.id as typeof tab)} className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold text-left ${tab === item.id ? 'bg-[#1a73e8]' : 'text-[#bdc1c6] hover:bg-[#3c4043]'}`}>
@@ -194,9 +285,16 @@ export default function AdminPage() {
             <p className="text-sm text-[#5f6368] mt-2">Sveiki, Mindaugai. Čia valdysite visas Getreview paskyras.</p>
           </div>
           {tab === 'users' && (
-            <div className="relative">
-              <Search size={17} className="absolute left-3 top-3 text-[#80868b]" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti įmonės ar vartotojo" className="bg-white border border-[#dadce0] rounded-xl py-2.5 pl-9 pr-3 text-sm w-full sm:w-80" />
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative">
+                <Search size={17} className="absolute left-3 top-3 text-[#80868b]" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti įmonės ar vartotojo" className="bg-white border border-[#dadce0] rounded-xl py-2.5 pl-9 pr-3 text-sm w-full sm:w-80" />
+              </div>
+              <select value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value as typeof paymentFilter)} aria-label="Mokėjimo filtras" className="bg-white border border-[#dadce0] rounded-xl py-2.5 px-3 text-sm">
+                <option value="all">Visi vartotojai</option>
+                <option value="paid">Tik susimokėję</option>
+                <option value="unpaid">Nesusimokėję / bandomieji</option>
+              </select>
             </div>
           )}
         </div>
@@ -206,8 +304,9 @@ export default function AdminPage() {
 
         {tab === 'users' && (
           <>
-            <div className="grid sm:grid-cols-3 gap-4 mb-6">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Registruotų vartotojų</p><strong className="text-3xl block mt-2">{users.length}</strong></div>
+              <div className="bg-white border border-[#b7dfc1] rounded-2xl p-5"><p className="text-xs text-[#137333]">Susimokėjusių</p><strong className="text-3xl block mt-2 text-[#137333]">{paidUsersCount}</strong></div>
               <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Surinktų atsiliepimų</p><strong className="text-3xl block mt-2">{users.reduce((total, user) => total + user.feedback_count, 0)}</strong></div>
               <div className="bg-white border border-[#dadce0] rounded-2xl p-5"><p className="text-xs text-[#5f6368]">Aktyvių QR nuskaitymų</p><strong className="text-3xl block mt-2">{users.reduce((total, user) => total + user.qr_scans, 0)}</strong></div>
             </div>
@@ -226,7 +325,7 @@ export default function AdminPage() {
                         <div className="font-bold">{user.company_name}</div>
                         <div className="text-sm text-[#5f6368]">{user.first_name} · {user.email}</div>
                       </div>
-                      <span className={`text-xs font-bold rounded-full px-3 py-1.5 w-fit ${daysLeft > 0 ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fce8e6] text-[#c5221f]'}`}>{daysLeft > 0 ? `Liko ${daysLeft} d.` : 'Pasibaigusi'}</span>
+                      <span className={`text-xs font-bold rounded-full px-3 py-1.5 w-fit ${user.is_paid ? 'bg-[#e6f4ea] text-[#137333]' : daysLeft > 0 ? 'bg-[#fef7e0] text-[#b06000]' : 'bg-[#fce8e6] text-[#c5221f]'}`}>{user.is_paid ? 'Susimokėjęs' : daysLeft > 0 ? `Bandomasis: liko ${daysLeft} d.` : 'Nesusimokėjęs'}</span>
                       <div className="grid grid-cols-3 gap-4 text-xs text-[#5f6368] min-w-[260px]">
                         <span>QR<strong className="block text-base text-[#202124]">{user.qr_scans}</strong></span>
                         <span>Atsiliepimai<strong className="block text-base text-[#202124]">{user.feedback_count}</strong></span>
@@ -268,6 +367,24 @@ export default function AdminPage() {
                 <p className="text-xs text-[#80868b] mt-3">Naujiems klientams kaina pasikeis iškart. Jau aktyvių prenumeratų kaina nepasikeis.</p>
               </div>
             </div>
+          </div>
+        )}
+
+        {tab === 'store' && (
+          <div className="space-y-6">
+            <form onSubmit={saveProduct} className="bg-white border border-[#dadce0] rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-5"><ShoppingBag className="text-[#1a73e8]" size={24} /><div><h2 className="text-xl font-bold">{editingProductId ? 'Redaguoti produktą' : 'Pridėti produktą'}</h2><p className="text-sm text-[#5f6368]">Kortelė, NFC kortelė ar stovelis su vienkartiniu mokėjimu.</p></div></div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <label className="text-sm font-semibold">Pavadinimas<input required value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="NFC stovelis" className="mt-1 w-full border border-[#dadce0] rounded-xl p-3 font-normal" /></label>
+                <label className="text-sm font-semibold">Kaina (€)<input required type="number" min="0.01" step="0.01" value={productPrice} onChange={(event) => setProductPrice(event.target.value)} placeholder="19.90" className="mt-1 w-full border border-[#dadce0] rounded-xl p-3 font-normal" /></label>
+                <label className="text-sm font-semibold md:col-span-2">Aprašymas<textarea value={productDescription} onChange={(event) => setProductDescription(event.target.value)} rows={3} placeholder="Trumpas produkto aprašymas" className="mt-1 w-full border border-[#dadce0] rounded-xl p-3 font-normal" /></label>
+                <label className="text-sm font-semibold">Nuotrauka<input type="file" accept="image/*" onChange={(event) => setProductImage(event.target.files?.[0] || null)} className="mt-1 w-full border border-[#dadce0] rounded-xl p-2.5 font-normal" /></label>
+                <label className="text-sm font-semibold">Rodomas eiliškumas<input type="number" value={productSortOrder} onChange={(event) => setProductSortOrder(event.target.value)} className="mt-1 w-full border border-[#dadce0] rounded-xl p-3 font-normal" /></label>
+              </div>
+              <label className="flex items-center gap-2 text-sm mt-4"><input type="checkbox" checked={productActive} onChange={(event) => setProductActive(event.target.checked)} /> Rodyti landing puslapyje</label>
+              <div className="flex gap-3 mt-5"><button type="submit" disabled={productSaving} className="bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 text-white rounded-xl px-5 py-2.5 text-sm font-semibold flex items-center gap-2">{productSaving ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}{editingProductId ? 'Išsaugoti pakeitimus' : 'Pridėti produktą'}</button>{editingProductId && <button type="button" onClick={resetProductForm} className="border border-[#dadce0] rounded-xl px-5 py-2.5 text-sm font-semibold">Atšaukti</button>}</div>
+            </form>
+            <div className="bg-white border border-[#dadce0] rounded-2xl overflow-hidden"><div className="p-5 border-b border-[#dadce0] flex justify-between"><h2 className="font-bold">Parduotuvės produktai</h2><span className="text-xs text-[#5f6368]">{products.length} produktai</span></div><div className="divide-y divide-[#dadce0]">{products.map((product) => <div key={product.id} className="p-5 flex flex-col sm:flex-row sm:items-center gap-4"><div className="w-16 h-16 rounded-xl bg-[#eef3f8] overflow-hidden shrink-0">{product.image_url ? <img src={product.image_url} alt="" className="w-full h-full object-cover" /> : <div className="h-full grid place-items-center text-[#1a73e8]"><ShoppingBag size={22} /></div>}</div><div className="flex-1"><h3 className="font-bold">{product.name}</h3><p className="text-sm text-[#5f6368]">{(product.price_cents / 100).toFixed(2).replace('.', ',')} € · {product.active ? 'Rodomas landing puslapyje' : 'Paslėptas'}</p></div><div className="flex gap-2"><button type="button" onClick={() => editProduct(product)} className="border border-[#dadce0] rounded-xl px-3 py-2 text-sm font-semibold">Redaguoti</button><button type="button" onClick={() => deleteProduct(product)} className="border border-[#f5b7b1] text-[#c5221f] rounded-xl px-3 py-2 text-sm font-semibold">Ištrinti</button></div></div>)}{products.length === 0 && <div className="p-10 text-center text-sm text-[#5f6368]">Produktų dar nėra. Pridėkite pirmą produktą ir jis atsiras landing puslapio apačioje.</div>}</div></div>
           </div>
         )}
 

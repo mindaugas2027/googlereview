@@ -3,11 +3,23 @@ import Link from 'next/link';
 import { PLAN_LIST } from '@/lib/plans';
 import { DEFAULT_PLAN_PRICES, getConfiguredPlanPrices, getPlanWithPrice } from '@/lib/plan-pricing';
 import { getServiceClient } from '@/lib/admin-auth';
+import { StoreProductCard } from '@/app/store/StoreProductCard';
+
+type StoreProduct = {
+  id: string;
+  name: string;
+  description: string;
+  image_url: string | null;
+  price_cents: number;
+};
 
 export default async function Home() {
   const serviceClient = getServiceClient();
   const prices = serviceClient ? await getConfiguredPlanPrices(serviceClient) : DEFAULT_PLAN_PRICES;
   const plans = PLAN_LIST.map((plan) => getPlanWithPrice(plan, prices));
+  const { data: products } = serviceClient
+    ? await serviceClient.from('store_products').select('id, name, description, image_url, price_cents').eq('active', true).order('sort_order').order('created_at')
+    : { data: null };
 
   return (
     <div className="min-h-screen bg-[#f8fafd] text-[#202124] font-sans">
@@ -162,6 +174,19 @@ export default async function Home() {
             ))}
           </div>
         </section>
+
+        {products && products.length > 0 && (
+          <section className="border-t border-[#dadce0] py-16">
+            <div className="max-w-3xl mx-auto text-center mb-10">
+              <p className="text-xs font-bold tracking-widest text-[#1a73e8] mb-3">BE ĮSIPAREIGOJIMŲ</p>
+              <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">QR ir NFC kortelės jūsų verslui</h2>
+              <p className="text-[#5f6368]">Vienkartinis pirkimas. Pasirinkite kortelę ar stovelį, įveskite pristatymo adresą ir apmokėkite saugiai per Stripe.</p>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {(products as StoreProduct[]).map((product) => <StoreProductCard key={product.id} product={product} />)}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );
