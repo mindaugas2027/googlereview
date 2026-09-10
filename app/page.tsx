@@ -13,6 +13,8 @@ type StoreProduct = {
   price_cents: number;
 };
 
+export const dynamic = 'force-dynamic';
+
 export default async function Home() {
   const serviceClient = getServiceClient();
   const prices = serviceClient ? await getConfiguredPlanPrices(serviceClient) : DEFAULT_PLAN_PRICES;
@@ -178,9 +180,9 @@ export default async function Home() {
         {products && products.length > 0 && (
           <section className="border-t border-[#dadce0] py-16">
             <div className="max-w-3xl mx-auto text-center mb-10">
-              <p className="text-xs font-bold tracking-widest text-[#1a73e8] mb-3">BE ĮSIPAREIGOJIMŲ</p>
-              <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">QR ir NFC kortelės jūsų verslui</h2>
-              <p className="text-[#5f6368]">Vienkartinis pirkimas. Pasirinkite kortelę ar stovelį, įveskite pristatymo adresą ir apmokėkite saugiai per Stripe.</p>
+              <p className="text-xs font-bold tracking-widest text-[#1a73e8] mb-3">BE MĖNESINIŲ ĮSIPAREIGOJIMŲ</p>
+              <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">Tiesiog QR arba NFC kortelė jūsų verslui</h2>
+              <p className="text-[#5f6368]">Vienkartinis pirkimas be prenumeratos. Pasirinkite QR/NFC kortelę arba stovelį, įveskite pristatymo adresą ir saugiai apmokėkite per Stripe.</p>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
               {(products as StoreProduct[]).map((product) => <StoreProductCard key={product.id} product={product} />)}
