@@ -181,8 +181,11 @@ export default async function Home() {
           <section className="border-t border-[#dadce0] py-16">
             <div className="max-w-3xl mx-auto text-center mb-10">
               <p className="text-xs font-bold tracking-widest text-[#1a73e8] mb-3">BE MĖNESINIŲ ĮSIPAREIGOJIMŲ</p>
-              <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">Tiesiog QR arba NFC kortelė jūsų verslui</h2>
-              <p className="text-[#5f6368]">Vienkartinis pirkimas be prenumeratos. Pasirinkite QR/NFC kortelę arba stovelį, įveskite pristatymo adresą ir saugiai apmokėkite per Stripe.</p>
+              <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">QR + NFC kortelė arba stovelis</h2>
+              <p className="text-[#5f6368]">Vienkartinis pirkimas. Jokio mėnesinio mokesčio ir jokių įsipareigojimų.</p>
+              <p className="text-[#5f6368] mt-3">Gaunate QR + NFC kortelę arba stovelį ir patys prijungiate savo Google atsiliepimų nuorodą.</p>
+              <p className="text-[#202124] font-semibold mt-4">Norite atsiliepimų filtro?</p>
+              <p className="text-[#5f6368] mt-1">Atsiliepimų filtras ir kitos papildomos funkcijos prieinamos pasirinkus mėnesinį planą.</p>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
               {(products as StoreProduct[]).map((product) => <StoreProductCard key={product.id} product={product} />)}
