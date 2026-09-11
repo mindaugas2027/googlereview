@@ -4,8 +4,12 @@ import { getStripeClient } from '@/lib/stripe'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as { productId?: string }
+    const body = await request.json() as { productId?: string; quantity?: number }
     if (!body.productId) return NextResponse.json({ error: 'Nepasirinktas produktas.' }, { status: 400 })
+    const quantity = Number(body.quantity)
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+      return NextResponse.json({ error: 'Pasirinkite kiekį nuo 1 iki 100 vnt.' }, { status: 400 })
+    }
     const client = getServiceClient()
     if (!client) return NextResponse.json({ error: 'Mokėjimo konfigūracija nepilna.' }, { status: 500 })
     const { data: product, error } = await client.from('store_products').select('id, name, description, image_url, price_cents').eq('id', body.productId).eq('active', true).single()
@@ -16,7 +20,7 @@ export async function POST(request: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: [{
-        quantity: 1,
+        quantity,
         price_data: {
           currency: 'eur',
           unit_amount: product.price_cents,

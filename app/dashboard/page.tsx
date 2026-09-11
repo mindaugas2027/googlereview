@@ -7,9 +7,10 @@ import { getPlan, PLANS, type PlanDefinition } from '@/lib/plans';
 import { DEFAULT_PLAN_PRICES, getPlanWithPrice, type PlanPrices } from '@/lib/plan-pricing';
 import {
   BarChart3, Download, Eye, Globe2, LayoutDashboard, LogOut, MapPin,
-  Menu, MessageSquare, Pencil, Plus, QrCode, ScanLine, Send, Settings, Sparkles, Star, Trash2, X, Zap, Loader2, ArrowUpRight
+  Menu, MessageSquare, Pencil, Plus, QrCode, ScanLine, Send, Settings, ShoppingBag, Sparkles, Star, Trash2, X, Zap, Loader2, ArrowUpRight
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { StoreProductCard } from '@/app/store/StoreProductCard';
 
 type Feedback = {
   id: string | number;
@@ -58,7 +59,7 @@ type DashboardUser = {
   };
 };
 
-type DashboardPageId = 'overview' | 'feedback' | 'qr' | 'analytics' | 'locations' | 'settings' | 'billing';
+type DashboardPageId = 'overview' | 'feedback' | 'qr' | 'analytics' | 'locations' | 'store' | 'settings' | 'billing';
 
 type QrCodeRow = {
   id: string;
@@ -90,12 +91,21 @@ type QrLimits = {
   max_locations: number;
 };
 
+type StoreProduct = {
+  id: string;
+  name: string;
+  description: string;
+  image_url: string | null;
+  price_cents: number;
+};
+
 const DASHBOARD_NAV_ITEMS: Array<{ id: DashboardPageId; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'overview', label: 'Apžvalga', icon: LayoutDashboard },
   { id: 'feedback', label: 'Atsiliepimai', icon: MessageSquare },
   { id: 'qr', label: 'QR Kodai', icon: QrCode },
   { id: 'analytics', label: 'Analitika', icon: BarChart3 },
   { id: 'locations', label: 'Vietos', icon: MapPin },
+  { id: 'store', label: 'Parduotuvė', icon: ShoppingBag },
   { id: 'settings', label: 'Nustatymai', icon: Settings },
   { id: 'billing', label: 'Mokėjimai', icon: Zap },
 ];
@@ -180,6 +190,8 @@ export default function DashboardPage() {
   const [savingLocation, setSavingLocation] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [planPrices, setPlanPrices] = useState<PlanPrices>(DEFAULT_PLAN_PRICES);
+  const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
+  const [storeLoading, setStoreLoading] = useState(false);
   // Vartotojo planas — iš user_metadata.plan_id (keičiamas Mokėjimų skiltyje / admino)
   const plan: PlanDefinition = getPlan(typeof user?.user_metadata?.plan_id === 'string' ? user.user_metadata.plan_id : undefined);
   const pricedPlan = getPlanWithPrice(plan, planPrices);
@@ -369,6 +381,18 @@ export default function DashboardPage() {
     };
     void loadPlanPrices();
   }, [user, viewAsId]);
+
+  useEffect(() => {
+    if (!user || viewAsId) return;
+    const loadStoreProducts = async () => {
+      setStoreLoading(true);
+      const response = await fetch('/api/store/products');
+      const payload = await response.json().catch(() => null);
+      if (response.ok && Array.isArray(payload?.products)) setStoreProducts(payload.products);
+      setStoreLoading(false);
+    };
+    void loadStoreProducts();
+  }, [user?.id, viewAsId]);
 
   // Admin API užklausos, kai peržiūrimas kliento dashboard
   const adminApiRequest = async (
@@ -1005,7 +1029,7 @@ export default function DashboardPage() {
 
                     <nav className="space-y-1">
             {DASHBOARD_NAV_ITEMS
-              .filter(item => !subscriptionExpired || item.id === 'billing')
+              .filter(item => (item.id !== 'store' || storeProducts.length > 0) && (!subscriptionExpired || item.id === 'billing' || item.id === 'store'))
               .map(item => (
                 <button 
                   key={item.id} 
@@ -1213,7 +1237,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {!subscriptionExpired && page !== 'billing' && (
+          {(!subscriptionExpired || page === 'store') && page !== 'billing' && (
             <div>
           {page === 'overview' && (
             <>
@@ -1341,6 +1365,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     ))}
+
                     {locations.length === 0 && <div className="bg-white border border-dashed border-[#b7bdc4] rounded-2xl p-8 text-center text-sm text-[#5f6368]">Vietų dar nėra — pridėkite pirmąją žemiau.</div>}
                   </div>
 
@@ -1386,6 +1411,23 @@ export default function DashboardPage() {
               </div>
               </div>
             ))}
+
+          {page === 'store' && (
+            <div className="max-w-5xl">
+              <span className="text-xs font-bold text-[#1a73e8] uppercase tracking-wider">PARDUOTUVĖ</span>
+              <h1 className="text-3xl font-extrabold mt-1 mb-2">Papildomi QR ir NFC produktai</h1>
+              <p className="text-sm text-[#5f6368] mb-6">Pasirinkite kortelių ar stovelių kiekį ir apmokėkite vienu užsakymu.</p>
+              {storeLoading ? (
+                <div className="bg-white border border-[#dadce0] rounded-2xl p-8 text-center text-sm text-[#5f6368]">Įkeliama…</div>
+              ) : storeProducts.length > 0 ? (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {storeProducts.map((product) => <StoreProductCard key={product.id} product={product} />)}
+                </div>
+              ) : (
+                <div className="bg-white border border-dashed border-[#b7bdc4] rounded-2xl p-8 text-center text-sm text-[#5f6368]">Šiuo metu papildomų produktų nėra.</div>
+              )}
+            </div>
+          )}
 
           {page === 'settings' && (
             <div>

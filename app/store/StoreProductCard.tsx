@@ -14,6 +14,7 @@ type StoreProduct = {
 export function StoreProductCard({ product }: { product: StoreProduct }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [quantity, setQuantity] = useState(1)
 
   const startCheckout = async () => {
     setLoading(true)
@@ -22,7 +23,7 @@ export function StoreProductCard({ product }: { product: StoreProduct }) {
       const response = await fetch('/api/stripe/store-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: product.id }),
+        body: JSON.stringify({ productId: product.id, quantity }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.url) {
@@ -50,8 +51,19 @@ export function StoreProductCard({ product }: { product: StoreProduct }) {
       <div className="p-5 flex flex-col flex-1">
         <h3 className="font-bold text-xl">{product.name}</h3>
         {product.description && <p className="text-sm text-[#5f6368] mt-2 flex-1">{product.description}</p>}
-        <div className="flex items-center justify-between gap-3 mt-5">
-          <strong className="text-2xl">{(product.price_cents / 100).toFixed(2).replace('.', ',')} €</strong>
+        <div className="flex items-end justify-between gap-3 mt-5">
+          <div>
+            <strong className="text-2xl block">{((product.price_cents * quantity) / 100).toFixed(2).replace('.', ',')} €</strong>
+            <span className="text-xs text-[#5f6368]">{(product.price_cents / 100).toFixed(2).replace('.', ',')} € / vnt.</span>
+          </div>
+          <label className="text-xs font-semibold text-[#5f6368]">
+            Kiekis
+            <select value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} disabled={loading} className="block mt-1 bg-white border border-[#dadce0] rounded-xl px-3 py-2 text-sm text-[#202124]" aria-label={`Kiekis: ${product.name}`}>
+              {Array.from({ length: 20 }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value} vnt.</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="flex justify-end mt-3">
           <button type="button" onClick={startCheckout} disabled={loading} className="bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 text-white rounded-xl px-4 py-2.5 text-sm font-semibold flex items-center gap-2">
             {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
             Pirkti
