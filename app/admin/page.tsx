@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { ADMIN_EMAIL, getTrialDaysLeft } from '@/lib/admin-auth'
 import { PLAN_LIST } from '@/lib/plans'
 import { DEFAULT_PLAN_PRICES, getPlanWithPrice, type PlanPrices } from '@/lib/plan-pricing'
-import { CreditCard, ExternalLink, ImagePlus, Loader2, LogOut, Search, Settings, ShoppingBag, Sparkles, Users, X } from 'lucide-react'
+import { CheckCircle2, CreditCard, ExternalLink, ImagePlus, Loader2, LogOut, Mail, MapPin, Package, Search, Settings, ShoppingBag, Sparkles, Users, X } from 'lucide-react'
 type AdminUser = {
   id: string
   email?: string
@@ -37,6 +37,23 @@ type StoreProduct = {
   sort_order: number
 }
 
+type StoreOrder = {
+  id: string
+  product_name: string
+  quantity: number
+  amount_cents: number
+  customer_email: string | null
+  shipping_name: string | null
+  shipping_address: Record<string, string> | null
+  status: string
+  created_at: string
+}
+
+const formatOrderAddress = (address: StoreOrder['shipping_address']) => {
+  if (!address) return 'Adresas nepateiktas'
+  return [address.line1, address.line2, address.postal_code, address.city, address.state, address.country].filter(Boolean).join(', ') || 'Adresas nepateiktas'
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -44,7 +61,7 @@ export default function AdminPage() {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [query, setQuery] = useState('')
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all')
-  const [tab, setTab] = useState<'users' | 'store' | 'settings'>('users')
+  const [tab, setTab] = useState<'users' | 'store' | 'orders' | 'settings'>('users')
   const [error, setError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
   const [extendDays, setExtendDays] = useState(30)
@@ -61,6 +78,8 @@ export default function AdminPage() {
   const [productSortOrder, setProductSortOrder] = useState('0')
   const [productActive, setProductActive] = useState(true)
   const [productImage, setProductImage] = useState<File | null>(null)
+  const [orders, setOrders] = useState<StoreOrder[]>([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
 
   const changePlan = async (user: AdminUser, planId: string) => {
     setPlanSaving(true)
@@ -112,6 +131,25 @@ export default function AdminPage() {
       setError('Nepavyko pasiekti serverio. Patikrinkite interneto ryšį.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadOrders = async () => {
+    setOrdersLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const response = await fetch('/api/admin/orders', { headers: { Authorization: `Bearer ${session.access_token}` } })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !Array.isArray(payload?.orders)) {
+        setError(payload?.error || `Užsakymų įkelti nepavyko (${response.status}).`)
+        return
+      }
+      setOrders(payload.orders)
+    } catch {
+      setError('Nepavyko pasiekti užsakymų serverio.')
+    } finally {
+      setOrdersLoading(false)
     }
   }
 
@@ -200,6 +238,13 @@ export default function AdminPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pradinis vartotojų sąrašo įkėlimas prisijungus
   useEffect(() => { loadUsers() }, [])
 
+  useEffect(() => {
+    if (tab !== 'orders') return
+    // Užsakymus krauname tik atidarius jų tabą.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadOrders()
+  }, [tab])
+
   // Saugos laikmatis: jei duomenys neatsako per 20 s, rodome klaidą vietoj amžino sukimosi ratuko
   useEffect(() => {
     if (!loading) return
@@ -265,6 +310,7 @@ export default function AdminPage() {
           {[
             { id: 'users', label: 'Visi vartotojai', icon: Users },
             { id: 'store', label: 'Parduotuvė', icon: ShoppingBag },
+            { id: 'orders', label: 'Užsakymai', icon: Package },
             { id: 'settings', label: 'Admin nustatymai', icon: Settings },
           ].map((item) => (
             <button key={item.id} onClick={() => setTab(item.id as typeof tab)} className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold text-left ${tab === item.id ? 'bg-[#1a73e8]' : 'text-[#bdc1c6] hover:bg-[#3c4043]'}`}>
@@ -386,6 +432,60 @@ export default function AdminPage() {
               <div className="flex gap-3 mt-5"><button type="submit" disabled={productSaving} className="bg-[#1a73e8] hover:bg-[#1769d1] disabled:opacity-60 text-white rounded-xl px-5 py-2.5 text-sm font-semibold flex items-center gap-2">{productSaving ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}{editingProductId ? 'Išsaugoti pakeitimus' : 'Pridėti produktą'}</button>{editingProductId && <button type="button" onClick={resetProductForm} className="border border-[#dadce0] rounded-xl px-5 py-2.5 text-sm font-semibold">Atšaukti</button>}</div>
             </form>
             <div className="bg-white border border-[#dadce0] rounded-2xl overflow-hidden"><div className="p-5 border-b border-[#dadce0] flex justify-between"><h2 className="font-bold">Parduotuvės produktai</h2><span className="text-xs text-[#5f6368]">{products.length} produktai</span></div><div className="divide-y divide-[#dadce0]">{products.map((product) => <div key={product.id} className="p-5 flex flex-col sm:flex-row sm:items-center gap-4"><div className="w-16 h-16 rounded-xl bg-[#eef3f8] overflow-hidden shrink-0">{product.image_url ? <img src={product.image_url} alt="" className="w-full h-full object-cover" /> : <div className="h-full grid place-items-center text-[#1a73e8]"><ShoppingBag size={22} /></div>}</div><div className="flex-1"><h3 className="font-bold">{product.name}</h3><p className="text-sm text-[#5f6368]">{(product.price_cents / 100).toFixed(2).replace('.', ',')} € · {product.active ? 'Rodomas landing puslapyje' : 'Paslėptas'}</p></div><div className="flex gap-2"><button type="button" onClick={() => editProduct(product)} className="border border-[#dadce0] rounded-xl px-3 py-2 text-sm font-semibold">Redaguoti</button><button type="button" onClick={() => deleteProduct(product)} className="border border-[#f5b7b1] text-[#c5221f] rounded-xl px-3 py-2 text-sm font-semibold">Ištrinti</button></div></div>)}{products.length === 0 && <div className="p-10 text-center text-sm text-[#5f6368]">Produktų dar nėra. Pridėkite pirmą produktą ir jis atsiras landing puslapio apačioje.</div>}</div></div>
+          </div>
+        )}
+
+        {tab === 'orders' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+              <div>
+                <span className="text-xs font-bold text-[#1a73e8] uppercase tracking-wider">PARDUOTUVĖ</span>
+                <h2 className="text-2xl font-extrabold mt-1">Užsakymai</h2>
+                <p className="text-sm text-[#5f6368] mt-1">Čia matysite klientų apmokėtus produktų užsakymus ir pristatymo duomenis.</p>
+              </div>
+              <button type="button" onClick={loadOrders} disabled={ordersLoading} className="border border-[#dadce0] bg-white rounded-xl px-4 py-2.5 text-sm font-semibold flex items-center gap-2 disabled:opacity-60">
+                <Loader2 size={16} className={ordersLoading ? 'animate-spin' : ''} />
+                Atnaujinti
+              </button>
+            </div>
+
+            <div className="bg-white border border-[#dadce0] rounded-2xl overflow-hidden">
+              <div className="p-5 border-b border-[#dadce0] flex items-center justify-between">
+                <h3 className="font-bold">Gauti užsakymai</h3>
+                <span className="text-xs text-[#5f6368]">{orders.length} užsakymai</span>
+              </div>
+              {ordersLoading && orders.length === 0 ? (
+                <div className="p-12 grid place-items-center text-[#5f6368]"><Loader2 size={24} className="animate-spin" /></div>
+              ) : orders.length === 0 ? (
+                <div className="p-12 text-center text-sm text-[#5f6368]">Užsakymų dar nėra. Kai klientas apmokės parduotuvės pirkinį, jis atsiras čia.</div>
+              ) : (
+                <div className="divide-y divide-[#dadce0]">
+                  {orders.map((order) => {
+                    const isPaid = order.status === 'paid'
+                    return (
+                      <article key={order.id} className="p-5 grid lg:grid-cols-[1.2fr_1fr_auto] gap-5 items-start">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="font-bold text-lg">{order.product_name}</h4>
+                            <span className={`text-xs font-bold rounded-full px-2.5 py-1 inline-flex items-center gap-1 ${isPaid ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>
+                              <CheckCircle2 size={14} /> {isPaid ? 'Apmokėta' : 'Tikrinama'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-[#5f6368] mt-1">Kiekis: {order.quantity} · {new Date(order.created_at).toLocaleString('lt-LT')}</p>
+                          <strong className="block text-xl mt-3">{(order.amount_cents / 100).toFixed(2).replace('.', ',')} €</strong>
+                        </div>
+                        <div className="space-y-2 text-sm min-w-0">
+                          <p className="font-bold">{order.shipping_name || 'Vardas nepateiktas'}</p>
+                          {order.customer_email && <p className="text-[#5f6368] flex items-start gap-2 break-all"><Mail size={16} className="mt-0.5 shrink-0" />{order.customer_email}</p>}
+                          <p className="text-[#5f6368] flex items-start gap-2"><MapPin size={16} className="mt-0.5 shrink-0" />{formatOrderAddress(order.shipping_address)}</p>
+                        </div>
+                        <span className="text-xs text-[#80868b] lg:text-right">Užsakymas<br />{order.id.slice(0, 8)}</span>
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
