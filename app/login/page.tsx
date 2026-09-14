@@ -30,8 +30,13 @@ export default function LoginPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- skaitome URL parametrą po mount, kad išvengtume hydration neatitikimo
-    setIsSignUp(new URLSearchParams(window.location.search).get('mode') === 'signup')
+    const params = new URLSearchParams(window.location.search)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- skaitome URL parametrą po mount
+    setIsSignUp(params.get('mode') === 'signup')
+    if (params.get('error') === 'admin-session') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- rodomas autentifikacijos klaidos pranešimas
+      setMessage({ text: 'Administratoriaus sesija baigėsi. Prisijunkite dar kartą naudodami mindaugas2027@gmail.com.', type: 'error' })
+    }
   }, [])
 
   const handleAuth = async (e: React.FormEvent) => {

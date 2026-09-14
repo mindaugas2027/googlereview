@@ -118,6 +118,11 @@ export default function AdminPage() {
       if (!session || session.user.email?.toLowerCase() !== ADMIN_EMAIL) { router.replace('/login'); return }
       const response = await fetch('/api/admin/users', { headers: { Authorization: `Bearer ${session.access_token}` } })
       const payload = await response.json().catch(() => null)
+      if (response.status === 401) {
+        await supabase.auth.signOut()
+        router.replace('/login?error=admin-session')
+        return
+      }
       if (!response.ok || !Array.isArray(payload?.users)) {
         setError(payload?.error || `Serverio klaida (${response.status}). Patikrinkite, ar aplinkoje nustatytas SUPABASE_SERVICE_ROLE_KEY.`)
         return
@@ -143,6 +148,11 @@ export default function AdminPage() {
       if (!session) return
       const response = await fetch('/api/admin/orders', { headers: { Authorization: `Bearer ${session.access_token}` } })
       const payload = await response.json().catch(() => null)
+      if (response.status === 401) {
+        await supabase.auth.signOut()
+        router.replace('/login?error=admin-session')
+        return
+      }
       if (!response.ok || !Array.isArray(payload?.orders)) {
         setError(payload?.error || `Užsakymų įkelti nepavyko (${response.status}).`)
         return
