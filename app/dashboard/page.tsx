@@ -283,7 +283,21 @@ export default function DashboardPage() {
       const stripeStatus = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('stripe')
         : null;
-      if (stripeStatus === 'success') setProfileMessage('Apmokėjimas gautas. Prenumerata bus aktyvuota netrukus.');
+      const stripeSessionId = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('session_id')
+        : null;
+      if (stripeStatus === 'success' && stripeSessionId) {
+        const confirmationResponse = await fetch(`/api/stripe/confirm?session_id=${encodeURIComponent(stripeSessionId)}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const confirmation = await confirmationResponse.json().catch(() => null);
+        if (confirmationResponse.ok && confirmation?.metadata) {
+          setUser({ ...session.user, user_metadata: confirmation.metadata });
+          setProfileMessage('Apmokėjimas gautas. Prenumerata aktyvi vienam mėnesiui.');
+        } else {
+          setProfileMessage('Apmokėjimas gautas. Prenumeratos aktyvavimas tikrinamas.');
+        }
+      }
       if (stripeStatus === 'cancelled') setProfileMessage('Apmokėjimas atšauktas.');
 
       // Administratorius be peržiūros parametro nukreipiamas į admin panelę
