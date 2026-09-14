@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, getTrialEndMs, DAY_MS, ADMIN_EMAIL } from '@/lib/admin-auth'
 import { readStatsForUsers, EMPTY_STATS } from '@/lib/stats'
+import { getStripeClient } from '@/lib/stripe'
 
 export async function GET(request: NextRequest) {
   const guard = await requireAdmin(request)
@@ -28,6 +29,9 @@ export async function GET(request: NextRequest) {
           trial_end: user.user_metadata?.trial_end || null,
           trial_days: user.user_metadata?.trial_days || null,
           plan_id: user.user_metadata?.plan_id || null,
+          subscription_status: user.user_metadata?.subscription_status || null,
+          stripe_subscription_id: user.user_metadata?.stripe_subscription_id || null,
+          user_metadata: user.user_metadata || {},
           monthly_goal: user.user_metadata?.monthly_goal || 60,
         })))
       hasMore = data.users.length === 1000
@@ -35,6 +39,29 @@ export async function GET(request: NextRequest) {
     }
 
     const userIds = users.map((user) => String(user.id))
+
+    // Atsarginis Stripe sinchronizavimas, jei webhookas nebuvo pristatytas.
+    const stripe = getStripeClient()
+    for (const user of users) {
+      if (!user.email || user.stripe_subscription_id) continue
+      const customers = await stripe.customers.list({ email: String(user.email), limit: 10 })
+      const customer = customers.data[0]
+      if (!customer) continue
+      const subscriptions = await stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 10 })
+      const subscription = subscriptions.data.find((item) => ['active', 'trialing'].includes(item.status))
+      if (!subscription) continue
+      const periodEnd = subscription.items.data[0]?.current_period_end
+      const metadata = {
+        ...((user as { user_metadata?: Record<string, unknown> }).user_metadata || {}),
+        stripe_customer_id: customer.id,
+        stripe_subscription_id: subscription.id,
+        subscription_status: subscription.status,
+        trial_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : user.trial_end,
+      }
+      await guard.client.auth.admin.updateUserById(String(user.id), { user_metadata: metadata })
+      user.stripe_subscription_id = subscription.id
+      user.subscription_status = subscription.status
+    }
 
     // Inkrementiniai skaitikliai: masine business_stats užklausa, o jei lentelės
     // dar nėra (migracija nepaleista) — automatiškai skaičiuojama tiesiogiai.
@@ -46,6 +73,7 @@ export async function GET(request: NextRequest) {
         const stats = userStats || EMPTY_STATS
         return {
           ...user,
+          is_paid: ['active', 'trialing'].includes(String(user.subscription_status)) && Boolean(user.stripe_subscription_id),
           feedback_count: Number(stats.total_feedbacks) || 0,
           google_redirects: Number(stats.google_redirects) || 0,
           qr_scans: Number(stats.total_qr_scans) || 0,
