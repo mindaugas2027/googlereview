@@ -34,6 +34,17 @@ export async function POST(request: NextRequest) {
       allow_promotion_codes: true,
     })
     if (!session.url) return NextResponse.json({ error: 'Stripe nesugeneravo apmokėjimo nuorodos.' }, { status: 502 })
+
+    const { error: orderError } = await client.from('store_orders').insert({
+      stripe_session_id: session.id,
+      product_id: product.id,
+      product_name: product.name,
+      quantity,
+      amount_cents: product.price_cents * quantity,
+      status: 'pending',
+    })
+    if (orderError && orderError.code !== '23505') throw orderError
+
     return NextResponse.json({ url: session.url })
   } catch (cause) {
     console.error('[api/stripe/store-checkout] nepavyko:', cause)
