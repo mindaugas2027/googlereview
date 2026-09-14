@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { getServiceClient } from '@/lib/admin-auth'
 import { getStripeClient } from '@/lib/stripe'
+import { sendOrderConfirmation } from '@/lib/order-email'
 
 export const runtime = 'nodejs'
 
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
         const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1 })
         const lineItem = lineItems.data[0]
         const shipping = session.collected_information?.shipping_details
-        const { error } = await adminClient.from('store_orders').upsert({
+        const { data: order, error } = await adminClient.from('store_orders').upsert({
           stripe_session_id: session.id,
           product_id: storeProductId,
           product_name: lineItem?.description || 'Parduotuvės produktas',
@@ -44,8 +45,27 @@ export async function POST(request: NextRequest) {
           shipping_name: shipping?.name || null,
           shipping_address: shipping?.address || null,
           status: session.payment_status || 'paid',
-        }, { onConflict: 'stripe_session_id' })
+        }, { onConflict: 'stripe_session_id' }).select('*').single()
         if (error) throw error
+
+        const customerEmail = session.customer_details?.email || session.customer_email
+        if (customerEmail && !order.confirmation_email_sent_at) {
+          try {
+            if (await sendOrderConfirmation({
+              id: order.id,
+              productName: order.product_name,
+              quantity: order.quantity,
+              amountCents: order.amount_cents,
+              customerEmail,
+              shippingName: order.shipping_name,
+              shippingAddress: order.shipping_address,
+            })) {
+              await adminClient.from('store_orders').update({ confirmation_email_sent_at: new Date().toISOString() }).eq('id', order.id)
+            }
+          } catch (emailError) {
+            console.error('[api/stripe/webhook] patvirtinimo laiško išsiųsti nepavyko:', emailError)
+          }
+        }
       }
       const userId = session.metadata?.user_id
       const planId = session.metadata?.plan_id

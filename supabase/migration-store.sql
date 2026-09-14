@@ -34,6 +34,9 @@ create table if not exists public.store_orders (
 
 alter table public.store_orders enable row level security;
 
+alter table public.store_orders
+  add column if not exists confirmation_email_sent_at timestamptz;
+
 insert into storage.buckets (id, name, public)
 values ('store-products', 'store-products', true)
 on conflict (id) do update set public = true;
