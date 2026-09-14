@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, getTrialEndMs, DAY_MS, ADMIN_EMAIL } from '@/lib/admin-auth'
 import { readStatsForUsers, EMPTY_STATS } from '@/lib/stats'
 import { getStripeClient } from '@/lib/stripe'
+import Stripe from 'stripe'
 
 export async function GET(request: NextRequest) {
   const guard = await requireAdmin(request)
@@ -43,24 +44,41 @@ export async function GET(request: NextRequest) {
     // Atsarginis Stripe sinchronizavimas, jei webhookas nebuvo pristatytas.
     const stripe = getStripeClient()
     for (const user of users) {
-      if (!user.email || user.stripe_subscription_id) continue
-      const customers = await stripe.customers.list({ email: String(user.email), limit: 10 })
-      const customer = customers.data[0]
-      if (!customer) continue
-      const subscriptions = await stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 10 })
-      const subscription = subscriptions.data.find((item) => ['active', 'trialing'].includes(item.status))
+      let customerId = typeof user.user_metadata === 'object' && user.user_metadata && 'stripe_customer_id' in user.user_metadata
+        ? String((user.user_metadata as Record<string, unknown>).stripe_customer_id || '')
+        : ''
+      let subscription: Stripe.Subscription | null = null
+      if (typeof user.stripe_subscription_id === 'string') {
+        try {
+          const found = await stripe.subscriptions.retrieve(user.stripe_subscription_id)
+          if (['active', 'trialing'].includes(found.status)) subscription = found
+        } catch {
+          subscription = null
+        }
+      }
+      if (!subscription && user.email) {
+        const customers = await stripe.customers.list({ email: String(user.email), limit: 10 })
+        const customer = customers.data[0]
+        if (customer) {
+          customerId = customer.id
+          const subscriptions = await stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 10 })
+          subscription = subscriptions.data.find((item) => ['active', 'trialing'].includes(item.status)) || null
+        }
+      }
       if (!subscription) continue
       const periodEnd = subscription.items.data[0]?.current_period_end
+      const trialEnd = periodEnd ? new Date(periodEnd * 1000).toISOString() : String(user.trial_end || '')
       const metadata = {
         ...((user as { user_metadata?: Record<string, unknown> }).user_metadata || {}),
-        stripe_customer_id: customer.id,
+        stripe_customer_id: customerId || null,
         stripe_subscription_id: subscription.id,
         subscription_status: subscription.status,
-        trial_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : user.trial_end,
+        trial_end: trialEnd,
       }
       await guard.client.auth.admin.updateUserById(String(user.id), { user_metadata: metadata })
       user.stripe_subscription_id = subscription.id
       user.subscription_status = subscription.status
+      user.trial_end = trialEnd
     }
 
     // Inkrementiniai skaitikliai: masine business_stats užklausa, o jei lentelės
