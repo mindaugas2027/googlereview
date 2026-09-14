@@ -181,6 +181,29 @@ export default function AdminPage() {
     }
   }
 
+  const deleteOrder = async (order: StoreOrder) => {
+    if (!window.confirm(`Ar tikrai ištrinti užsakymą „${order.product_name}“? Šis veiksmas negrąžina pinigų.`)) return
+    setOrdersLoading(true)
+    setError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const response = await fetch('/api/admin/orders', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) { setError(payload?.error || 'Užsakymo ištrinti nepavyko.'); return }
+      setOrders((current) => current.filter((item) => item.id !== order.id))
+      setActionMessage('Užsakymas ištrintas iš sąrašo.')
+    } catch {
+      setError('Nepavyko pasiekti užsakymų serverio.')
+    } finally {
+      setOrdersLoading(false)
+    }
+  }
+
   const savePlanPrices = async () => {
     setPricesSaving(true)
     setError('')
@@ -522,6 +545,7 @@ export default function AdminPage() {
                           <span className="text-xs text-[#80868b] lg:text-right">Užsakymas<br />{order.id.slice(0, 8)}</span>
                           {!isShipped && !isRefunded && <button type="button" onClick={() => updateOrder(order, 'ship')} className="bg-[#1a73e8] text-white rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2"><Truck size={14} /> Pažymėti išsiųstu</button>}
                           {!isRefunded && <button type="button" onClick={() => updateOrder(order, 'refund')} className="border border-[#f5b7b1] text-[#c5221f] rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2"><RefreshCcw size={14} /> Grąžinti pinigus</button>}
+                          <button type="button" onClick={() => deleteOrder(order)} className="border border-[#dadce0] text-[#5f6368] rounded-xl px-3 py-2 text-xs font-semibold">Ištrinti</button>
                         </div>
                       </article>
                     )

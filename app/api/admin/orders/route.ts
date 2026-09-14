@@ -17,6 +17,7 @@ async function syncCompletedStoreOrders(client: SupabaseClient) {
       .select('status')
       .eq('stripe_session_id', session.id)
       .maybeSingle()
+    if (existingOrder?.status === 'deleted') continue
     const { error } = await client.from('store_orders').upsert({
       stripe_session_id: session.id,
       product_id: session.metadata?.store_product_id,
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await guard.client
     .from('store_orders')
     .select('*')
+    .neq('status', 'deleted')
     .order('created_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -82,4 +84,16 @@ export async function PATCH(request: NextRequest) {
   const { data, error } = await guard.client.from('store_orders').update({ status: 'refunded' }).eq('id', order.id).select('*').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ order: data })
+}
+
+export async function DELETE(request: NextRequest) {
+  const guard = await requireAdmin(request)
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
+
+  const body = await request.json().catch(() => null) as { orderId?: string } | null
+  if (!body?.orderId) return NextResponse.json({ error: 'Trūksta užsakymo.' }, { status: 400 })
+
+  const { error } = await guard.client.from('store_orders').update({ status: 'deleted' }).eq('id', body.orderId)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ deleted: true })
 }
