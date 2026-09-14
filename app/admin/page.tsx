@@ -19,6 +19,7 @@ type AdminUser = {
   trial_days?: number | null
   plan_id?: string | null
   subscription_status?: string | null
+  cancel_at_period_end?: boolean
   is_paid: boolean
   monthly_goal?: number
   feedback_count: number
@@ -433,7 +434,15 @@ export default function AdminPage() {
                         <div className="font-bold">{user.company_name}</div>
                         <div className="text-sm text-[#5f6368]">{user.first_name} · {user.email}</div>
                       </div>
-                      <span className={`text-xs font-bold rounded-full px-3 py-1.5 w-fit ${user.is_paid ? 'bg-[#e6f4ea] text-[#137333]' : daysLeft > 0 ? 'bg-[#fef7e0] text-[#b06000]' : 'bg-[#fce8e6] text-[#c5221f]'}`}>{user.is_paid ? 'Susimokėjęs' : daysLeft > 0 ? `Bandomasis: liko ${daysLeft} d.` : 'Nesusimokėjęs'}</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`text-xs font-bold rounded-full px-3 py-1.5 w-fit ${user.is_paid ? 'bg-[#e6f4ea] text-[#137333]' : daysLeft > 0 ? 'bg-[#fef7e0] text-[#b06000]' : 'bg-[#fce8e6] text-[#c5221f]'}`}>
+                          {user.is_paid ? 'Susimokėjęs' : 'Nesusimokėjęs'}
+                        </span>
+                        <span className={`text-xs font-semibold rounded-full px-3 py-1.5 ${daysLeft > 0 ? 'bg-[#e8f0fe] text-[#1967d2]' : 'bg-[#fce8e6] text-[#c5221f]'}`}>
+                          {daysLeft > 0 ? `Liko ${daysLeft} d.` : 'Pasibaigusi'}
+                        </span>
+                        {user.cancel_at_period_end && daysLeft > 0 && <span className="text-xs font-semibold rounded-full px-3 py-1.5 bg-[#fef7e0] text-[#b06000]">Atšaukta</span>}
+                      </div>
                       <div className="grid grid-cols-3 gap-4 text-xs text-[#5f6368] min-w-[260px]">
                         <span>QR<strong className="block text-base text-[#202124]">{user.qr_scans}</strong></span>
                         <span>Atsiliepimai<strong className="block text-base text-[#202124]">{user.feedback_count}</strong></span>

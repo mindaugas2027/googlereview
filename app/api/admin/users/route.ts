@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
           plan_id: user.user_metadata?.plan_id || null,
           subscription_status: user.user_metadata?.subscription_status || null,
           stripe_subscription_id: user.user_metadata?.stripe_subscription_id || null,
+          cancel_at_period_end: user.user_metadata?.cancel_at_period_end === true,
           user_metadata: user.user_metadata || {},
           monthly_goal: user.user_metadata?.monthly_goal || 60,
         })))
