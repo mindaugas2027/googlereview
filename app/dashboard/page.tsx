@@ -820,7 +820,7 @@ export default function DashboardPage() {
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || 'Prenumeratos atšaukti nepavyko.');
       setUser((currentUser) => currentUser
-        ? { ...currentUser, user_metadata: { ...currentUser.user_metadata, cancel_at_period_end: true } }
+        ? { ...currentUser, user_metadata: { ...currentUser.user_metadata, cancel_at_period_end: true, ...(payload?.trial_end ? { trial_end: payload.trial_end } : {}) } }
         : currentUser);
       setProfileMessage('Prenumerata atšaukta. Ja galėsite naudotis iki laikotarpio pabaigos.');
     } catch (cause) {
