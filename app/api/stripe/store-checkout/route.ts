@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       }],
       shipping_address_collection: { allowed_countries: ['LT', 'LV', 'EE', 'PL', 'DE'] },
       metadata: { store_product_id: product.id },
-      success_url: `${origin}/?store=success`,
+      success_url: `${origin}/?store=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/?store=cancelled`,
       allow_promotion_codes: true,
     })

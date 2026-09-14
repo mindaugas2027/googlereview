@@ -4,6 +4,7 @@ import { PLAN_LIST } from '@/lib/plans';
 import { DEFAULT_PLAN_PRICES, getConfiguredPlanPrices, getPlanWithPrice } from '@/lib/plan-pricing';
 import { getServiceClient } from '@/lib/admin-auth';
 import { StoreProductCard } from '@/app/store/StoreProductCard';
+import { StorePurchaseConfirmation } from '@/app/store/StorePurchaseConfirmation';
 
 type StoreProduct = {
   id: string;
@@ -25,6 +26,7 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-[#f8fafd] text-[#202124] font-sans">
+      <StorePurchaseConfirmation />
       {/* VIRŠUTINĖ NAVIGACIJA */}
       <header className="flex justify-between items-center p-6 border-b border-[#dadce0] max-w-7xl mx-auto">
         <div className="flex items-center gap-2.5">
