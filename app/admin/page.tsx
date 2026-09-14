@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { ADMIN_EMAIL, getTrialDaysLeft } from '@/lib/admin-auth'
 import { PLAN_LIST } from '@/lib/plans'
 import { DEFAULT_PLAN_PRICES, getPlanWithPrice, type PlanPrices } from '@/lib/plan-pricing'
-import { CheckCircle2, CreditCard, ExternalLink, ImagePlus, Loader2, LogOut, Mail, MapPin, Package, Search, Settings, ShoppingBag, Sparkles, Users, X } from 'lucide-react'
+import { CheckCircle2, CreditCard, ExternalLink, ImagePlus, Loader2, LogOut, Mail, MapPin, Package, PackageCheck, RefreshCcw, Search, Settings, ShoppingBag, Sparkles, Truck, Users, X } from 'lucide-react'
 type AdminUser = {
   id: string
   email?: string
@@ -39,6 +39,7 @@ type StoreProduct = {
 
 type StoreOrder = {
   id: string
+  stripe_session_id: string
   product_name: string
   quantity: number
   amount_cents: number
@@ -80,6 +81,7 @@ export default function AdminPage() {
   const [productImage, setProductImage] = useState<File | null>(null)
   const [orders, setOrders] = useState<StoreOrder[]>([])
   const [ordersLoading, setOrdersLoading] = useState(false)
+  const [ordersFilter, setOrdersFilter] = useState<'all' | 'paid' | 'shipped' | 'refunded'>('all')
 
   const changePlan = async (user: AdminUser, planId: string) => {
     setPlanSaving(true)
@@ -146,6 +148,32 @@ export default function AdminPage() {
         return
       }
       setOrders(payload.orders)
+    } catch {
+      setError('Nepavyko pasiekti užsakymų serverio.')
+    } finally {
+      setOrdersLoading(false)
+    }
+  }
+
+  const updateOrder = async (order: StoreOrder, action: 'ship' | 'refund') => {
+    const message = action === 'ship'
+      ? 'Ar tikrai jau išsiuntėte šį užsakymą?'
+      : 'Ar tikrai grąžinti pinigus klientui per Stripe? Šio veiksmo atšaukti negalima.'
+    if (!window.confirm(message)) return
+    setOrdersLoading(true)
+    setError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const response = await fetch('/api/admin/orders', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, action }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) { setError(payload?.error || 'Užsakymo atnaujinti nepavyko.'); return }
+      setOrders((current) => current.map((item) => item.id === order.id ? payload.order : item))
+      setActionMessage(action === 'ship' ? 'Užsakymas pažymėtas kaip išsiųstas.' : 'Pinigai klientui grąžinti.')
     } catch {
       setError('Nepavyko pasiekti užsakymų serverio.')
     } finally {
@@ -261,6 +289,7 @@ export default function AdminPage() {
     return matchesQuery && matchesPayment
   }), [users, query, paymentFilter])
   const paidUsersCount = users.filter((user) => user.is_paid).length
+  const visibleOrders = orders.filter((order) => ordersFilter === 'all' || order.status === ordersFilter)
 
   const runUserAction = async (action: 'extend_trial' | 'expire_trial' | 'delete_user', user: AdminUser, opts?: { days?: number; endDate?: string }) => {
     if (action === 'delete_user' && !window.confirm(`Ar tikrai norite ištrinti ${user.company_name} paskyrą?`)) return
@@ -450,25 +479,35 @@ export default function AdminPage() {
             </div>
 
             <div className="bg-white border border-[#dadce0] rounded-2xl overflow-hidden">
-              <div className="p-5 border-b border-[#dadce0] flex items-center justify-between">
-                <h3 className="font-bold">Gauti užsakymai</h3>
-                <span className="text-xs text-[#5f6368]">{orders.length} užsakymai</span>
+              <div className="p-5 border-b border-[#dadce0] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-bold">Gauti užsakymai</h3>
+                  <span className="text-xs text-[#5f6368]">Rodoma: {visibleOrders.length} iš {orders.length}</span>
+                </div>
+                <select value={ordersFilter} onChange={(event) => setOrdersFilter(event.target.value as typeof ordersFilter)} aria-label="Užsakymų būsenos filtras" className="bg-white border border-[#dadce0] rounded-xl px-3 py-2 text-sm">
+                  <option value="all">Visi užsakymai</option>
+                  <option value="paid">Nauji / apmokėti</option>
+                  <option value="shipped">Išsiųsti</option>
+                  <option value="refunded">Grąžinti</option>
+                </select>
               </div>
               {ordersLoading && orders.length === 0 ? (
                 <div className="p-12 grid place-items-center text-[#5f6368]"><Loader2 size={24} className="animate-spin" /></div>
-              ) : orders.length === 0 ? (
+              ) : visibleOrders.length === 0 ? (
                 <div className="p-12 text-center text-sm text-[#5f6368]">Užsakymų dar nėra. Kai klientas apmokės parduotuvės pirkinį, jis atsiras čia.</div>
               ) : (
                 <div className="divide-y divide-[#dadce0]">
-                  {orders.map((order) => {
-                    const isPaid = order.status === 'paid'
+                  {visibleOrders.map((order) => {
+                    const isShipped = order.status === 'shipped'
+                    const isRefunded = order.status === 'refunded'
+                    const statusLabel = isShipped ? 'Išsiųsta' : isRefunded ? 'Grąžinta' : order.status === 'paid' ? 'Apmokėta' : 'Tikrinama'
                     return (
                       <article key={order.id} className="p-5 grid lg:grid-cols-[1.2fr_1fr_auto] gap-5 items-start">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <h4 className="font-bold text-lg">{order.product_name}</h4>
-                            <span className={`text-xs font-bold rounded-full px-2.5 py-1 inline-flex items-center gap-1 ${isPaid ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>
-                              <CheckCircle2 size={14} /> {isPaid ? 'Apmokėta' : 'Tikrinama'}
+                            <span className={`text-xs font-bold rounded-full px-2.5 py-1 inline-flex items-center gap-1 ${isShipped ? 'bg-[#e8f0fe] text-[#1967d2]' : isRefunded ? 'bg-[#fce8e6] text-[#c5221f]' : order.status === 'paid' ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#fef7e0] text-[#b06000]'}`}>
+                              {isShipped ? <PackageCheck size={14} /> : isRefunded ? <RefreshCcw size={14} /> : <CheckCircle2 size={14} />} {statusLabel}
                             </span>
                           </div>
                           <p className="text-sm text-[#5f6368] mt-1">Kiekis: {order.quantity} · {new Date(order.created_at).toLocaleString('lt-LT')}</p>
@@ -479,7 +518,11 @@ export default function AdminPage() {
                           {order.customer_email && <p className="text-[#5f6368] flex items-start gap-2 break-all"><Mail size={16} className="mt-0.5 shrink-0" />{order.customer_email}</p>}
                           <p className="text-[#5f6368] flex items-start gap-2"><MapPin size={16} className="mt-0.5 shrink-0" />{formatOrderAddress(order.shipping_address)}</p>
                         </div>
-                        <span className="text-xs text-[#80868b] lg:text-right">Užsakymas<br />{order.id.slice(0, 8)}</span>
+                        <div className="flex flex-col items-start lg:items-end gap-2">
+                          <span className="text-xs text-[#80868b] lg:text-right">Užsakymas<br />{order.id.slice(0, 8)}</span>
+                          {!isShipped && !isRefunded && <button type="button" onClick={() => updateOrder(order, 'ship')} className="bg-[#1a73e8] text-white rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2"><Truck size={14} /> Pažymėti išsiųstu</button>}
+                          {!isRefunded && <button type="button" onClick={() => updateOrder(order, 'refund')} className="border border-[#f5b7b1] text-[#c5221f] rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2"><RefreshCcw size={14} /> Grąžinti pinigus</button>}
+                        </div>
                       </article>
                     )
                   })}
