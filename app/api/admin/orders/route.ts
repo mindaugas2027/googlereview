@@ -18,6 +18,10 @@ async function syncCompletedStoreOrders(client: SupabaseClient) {
       .eq('stripe_session_id', session.id)
       .maybeSingle()
     if (existingOrder?.status === 'deleted') continue
+    const refunds = typeof session.payment_intent === 'string'
+      ? await stripe.refunds.list({ payment_intent: session.payment_intent, limit: 1 })
+      : null
+    const hasRefund = refunds?.data.some((refund) => refund.status === 'succeeded')
     const { error } = await client.from('store_orders').upsert({
       stripe_session_id: session.id,
       product_id: session.metadata?.store_product_id,
@@ -27,8 +31,10 @@ async function syncCompletedStoreOrders(client: SupabaseClient) {
       customer_email: session.customer_details?.email || session.customer_email || null,
       shipping_name: shipping?.name || null,
       shipping_address: shipping?.address || null,
-      status: existingOrder?.status === 'shipped' || existingOrder?.status === 'refunded'
-        ? existingOrder.status
+      status: hasRefund
+        ? 'refunded'
+        : existingOrder?.status === 'shipped' || existingOrder?.status === 'refunded'
+          ? existingOrder.status
         : session.payment_status || 'paid',
     }, { onConflict: 'stripe_session_id' })
     if (error) throw error

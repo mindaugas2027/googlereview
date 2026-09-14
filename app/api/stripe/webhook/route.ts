@@ -35,6 +35,11 @@ export async function POST(request: NextRequest) {
         const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1 })
         const lineItem = lineItems.data[0]
         const shipping = session.collected_information?.shipping_details
+        const { data: existingOrder } = await adminClient
+          .from('store_orders')
+          .select('status')
+          .eq('stripe_session_id', session.id)
+          .maybeSingle()
         const { data: order, error } = await adminClient.from('store_orders').upsert({
           stripe_session_id: session.id,
           product_id: storeProductId,
@@ -44,7 +49,9 @@ export async function POST(request: NextRequest) {
           customer_email: session.customer_details?.email || session.customer_email || null,
           shipping_name: shipping?.name || null,
           shipping_address: shipping?.address || null,
-          status: session.payment_status || 'paid',
+          status: existingOrder?.status === 'shipped' || existingOrder?.status === 'refunded' || existingOrder?.status === 'deleted'
+            ? existingOrder.status
+            : session.payment_status || 'paid',
         }, { onConflict: 'stripe_session_id' }).select('*').single()
         if (error) throw error
 
