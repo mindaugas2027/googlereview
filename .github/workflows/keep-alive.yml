@@ -9,13 +9,15 @@ jobs:
   keep-alive:
     runs-on: ubuntu-latest
     env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
     steps:
       - name: Ping Supabase REST API
         shell: bash
         run: |
           set -euo pipefail
+          : "${SUPABASE_URL:?Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL GitHub secret}"
+          : "${SUPABASE_ANON_KEY:?Missing SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY GitHub secret}"
           curl --fail-with-body --silent --show-error \
             --retry 3 \
             --retry-delay 5 \
