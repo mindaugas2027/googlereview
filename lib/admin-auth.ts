@@ -24,7 +24,7 @@ export function getTrialEndMs(meta: TrialMeta | null | undefined): number {
 
 /** Grąžina likusį dienų skaičių iki prenumeratos pabaigos (0 = pasibaigusi). */
 export function getTrialDaysLeft(meta: TrialMeta | null | undefined): number {
-  return Math.max(0, Math.ceil((getTrialEndMs(meta) - Date.now()) / DAY_MS))
+  return Math.max(0, Math.floor((getTrialEndMs(meta) - Date.now()) / DAY_MS))
 }
 
 

@@ -115,11 +115,11 @@ const getTrialDaysLeft = (meta?: { trial_end?: string; trial_started_at?: string
   const DAY = 24 * 60 * 60 * 1000;
   if (meta.trial_end) {
     const end = new Date(meta.trial_end).getTime();
-    if (!Number.isNaN(end)) return Math.max(0, Math.ceil((end - Date.now()) / DAY));
+    if (!Number.isNaN(end)) return Math.max(0, Math.floor((end - Date.now()) / DAY));
   }
   const start = meta.trial_started_at ? new Date(meta.trial_started_at).getTime() : Date.now();
   const days = Number(meta.trial_days) || 14;
-  return Math.max(0, Math.ceil((start + days * DAY - Date.now()) / DAY));
+  return Math.max(0, Math.floor((start + days * DAY - Date.now()) / DAY));
 };
 
 const normalizeGoogleReviewUrl = (value: string) => {
@@ -140,6 +140,7 @@ const mapFeedback = (feedback: FeedbackRow): Feedback => ({
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [, setCurrentTime] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<DashboardUser | null>(null);
   const [password, setPassword] = useState('');
@@ -192,6 +193,11 @@ export default function DashboardPage() {
   const [planPrices, setPlanPrices] = useState<PlanPrices>(DEFAULT_PLAN_PRICES);
   const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
   const [storeLoading, setStoreLoading] = useState(false);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setCurrentTime(Date.now()), 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, []);
   // Vartotojo planas — iš user_metadata.plan_id (keičiamas Mokėjimų skiltyje / admino)
   const plan: PlanDefinition = getPlan(typeof user?.user_metadata?.plan_id === 'string' ? user.user_metadata.plan_id : undefined);
   const pricedPlan = getPlanWithPrice(plan, planPrices);
