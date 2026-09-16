@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServiceClient } from '@/lib/admin-auth'
+import { getServiceClient, getTrialEndMs } from '@/lib/admin-auth'
 import { normalizeGoogleReviewUrl } from '@/lib/api-helpers'
 import { getPlan } from '@/lib/plans'
 
@@ -36,6 +36,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Naudotojas nerastas.' }, { status: 404 })
     }
     const metadata = (target.user.user_metadata || {}) as Record<string, unknown>
+    if (getTrialEndMs(metadata) <= Date.now()) {
+      return NextResponse.json({ error: 'Prenumerata pasibaigusi.', code: 'SUBSCRIPTION_EXPIRED' }, { status: 403 })
+    }
 
     // QR kodas ir jo vieta
     let qr: ResolveRow | null = null

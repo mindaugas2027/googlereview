@@ -22,6 +22,7 @@ export default function ReviewPage() {
   // Naujųjų QR kodų (?qr=) konfigūracija, gaunama iš /api/qr/resolve
   const [resolved, setResolved] = useState<ResolvedConfig | null>(null)
   const [resolveError, setResolveError] = useState(false)
+  const [resolveErrorMessage, setResolveErrorMessage] = useState('')
   const [retryKey, setRetryKey] = useState(0)
 
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
@@ -40,23 +41,17 @@ export default function ReviewPage() {
   const isPositive = rating >= threshold
   const scanRecorded = useRef(false)
 
-  // Senųjų nuorodų nuskaitymas (be QR kodo) — kaip ir anksčiau
+  // Visos QR nuorodos tikrinamos serveryje, įskaitant senas nuorodas be ?qr=.
   useEffect(() => {
-    if (!businessId || qrParam || scanRecorded.current) return
-    scanRecorded.current = true
-    supabase.from('qr_scans').insert({ user_id: businessId }).then(({ error }) => {
-      if (error) console.error('QR scan could not be recorded', error)
-    })
-  }, [businessId, qrParam])
-
-  // Naujųjų QR kodų konfigūracija (nuskaitymą užfiksuota /api/qr/resolve pusėje)
-  useEffect(() => {
-    if (!businessId || !qrParam) return
+    if (!businessId) return
     let cancelled = false
     const loadConfig = async () => {
       setResolveError(false)
+      setResolveErrorMessage('')
       try {
-        const response = await fetch(`/api/qr/resolve?business=${encodeURIComponent(businessId)}&qr=${encodeURIComponent(qrParam)}`)
+        const query = new URLSearchParams({ business: businessId })
+        if (qrParam) query.set('qr', qrParam)
+        const response = await fetch(`/api/qr/resolve?${query.toString()}`)
         const payload = await response.json().catch(() => null)
         if (!response.ok || !payload) throw new Error(payload?.error || 'Nepavyko gauti QR nustatymų.')
         if (cancelled) return
@@ -71,12 +66,24 @@ export default function ReviewPage() {
         })
       } catch (cause) {
         console.error('QR config resolution failed', cause)
-        if (!cancelled) setResolveError(true)
+        if (!cancelled) {
+          setResolveErrorMessage(cause instanceof Error ? cause.message : 'Nepavyko gauti QR nustatymų.')
+          setResolveError(true)
+        }
       }
     }
     void loadConfig()
     return () => { cancelled = true }
   }, [businessId, qrParam, retryKey])
+
+  useEffect(() => {
+    if (!businessId || scanRecorded.current || !resolved) return
+    scanRecorded.current = true
+    if (qrParam) return
+    supabase.from('qr_scans').insert({ user_id: businessId }).then(({ error }) => {
+      if (error) console.error('QR scan could not be recorded', error)
+    })
+  }, [businessId, qrParam, resolved])
 
   const recordGoogleClick = async (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault()
@@ -122,11 +129,12 @@ export default function ReviewPage() {
     setSubmitted(true)
   }
 
-  if (qrParam && resolveError) {
-    return <main className="min-h-screen bg-[#f8fafd] text-[#202124] flex items-center justify-center p-6"><div className="bg-white border border-[#dadce0] rounded-2xl p-8 max-w-md w-full text-center shadow-sm"><h1 className="text-xl font-extrabold mb-2">QR kodas nerastas</h1><p className="text-sm text-[#5f6368] mb-5">Nepavyko gauti šio QR kodo nustatymų. Pabandykite nuskaityti dar kartą.</p><button onClick={() => setRetryKey((value) => value + 1)} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl py-2.5 px-4 text-sm font-semibold">Bandyti dar kartą</button></div></main>
+  if (resolveError) {
+    const expired = resolveErrorMessage === 'Prenumerata pasibaigusi.'
+    return <main className="min-h-screen bg-[#f8fafd] text-[#202124] flex items-center justify-center p-6"><div className="bg-white border border-[#dadce0] rounded-2xl p-8 max-w-md w-full text-center shadow-sm"><h1 className="text-xl font-extrabold mb-2">{expired ? 'Prenumerata neaktyvi' : 'QR kodas nerastas'}</h1><p className="text-sm text-[#5f6368] mb-5">{expired ? 'Ši QR nuoroda vėl veiks pratęsus prenumeratą.' : 'Nepavyko gauti šio QR kodo nustatymų. Pabandykite nuskaityti dar kartą.'}</p>{!expired && <button onClick={() => setRetryKey((value) => value + 1)} className="bg-[#1a73e8] hover:bg-[#1769d1] text-white rounded-xl py-2.5 px-4 text-sm font-semibold">Bandyti dar kartą</button>}</div></main>
   }
 
-  if (qrParam && !resolved) {
+  if (!resolved) {
     return <main className="min-h-screen bg-[#f8fafd] text-[#202124] flex items-center justify-center p-6"><Loader2 className="animate-spin text-[#1a73e8]" size={30} /></main>
   }
 
