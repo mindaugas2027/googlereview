@@ -12,18 +12,23 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
     steps:
-      - name: Ping Supabase REST API
+      - name: Ping a public Supabase table
         shell: bash
         run: |
           set -euo pipefail
           : "${SUPABASE_URL:?Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL GitHub secret}"
           : "${SUPABASE_ANON_KEY:?Missing SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY GitHub secret}"
+
+          # Query a public table that is intentionally readable by anon users.
+          # This returns HTTP 200 even when the table is empty, instead of 404/400
+          # from hitting the root REST endpoint.
           curl --fail-with-body --silent --show-error \
             --retry 3 \
             --retry-delay 5 \
             --max-time 30 \
             --output /dev/null \
-            --write-out 'Supabase REST API responded with HTTP %{http_code}\n' \
-            "${SUPABASE_URL%/}/rest/v1/" \
+            --write-out 'Supabase keep-alive responded with HTTP %{http_code}\n' \
+            "${SUPABASE_URL%/}/rest/v1/store_products?select=id&limit=1" \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Accept: application/json"
