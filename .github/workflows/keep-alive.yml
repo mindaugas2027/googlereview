@@ -28,5 +28,4 @@ jobs:
             --output /dev/null \
             --write-out 'Supabase auth health responded with HTTP %{http_code}\n' \
             "${SUPABASE_URL%/}/auth/v1/health" \
-            -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
+            -H "apikey: ${SUPABASE_ANON_KEY}"
