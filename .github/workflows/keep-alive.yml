@@ -11,7 +11,8 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY }}
-      HEARTBEAT_USER_EMAIL: ${{ secrets.HEARTBEAT_USER_EMAIL || 'mindaugas2027@gmail.com' }}
+      HEARTBEAT_USER_EMAIL: ${{ secrets.HEARTBEAT_USER_EMAIL || 'keep@gmail.com' }}
+      HEARTBEAT_USER_ID: ${{ secrets.HEARTBEAT_USER_ID || '4b0c21f6-b7c4-4d9c-9072-52249ac31882' }}
     steps:
       - name: Touch subscription metadata to prevent Supabase sleep
         shell: bash
@@ -23,11 +24,16 @@ jobs:
           # Keep the project warm without changing the visible subscription state for the user.
           # We temporarily add 1 day to a dedicated heartbeat account, then restore the original
           # metadata within a second so the customer/admin sees no change in billing state.
-          USER_ID=$(curl --fail --silent --show-error \
-            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            "${SUPABASE_URL%/}/auth/v1/admin/users?email=${HEARTBEAT_USER_EMAIL}" \
-            | python3 -c "import json, sys; data=json.load(sys.stdin); users=data.get('users') or []; print((users[0].get('id') if users else '') or '')")
+          USER_ID="${HEARTBEAT_USER_ID}"
+
+          if [[ -z "${USER_ID}" ]]; then
+            echo "No heartbeat user id configured; falling back to lookup by email"
+            USER_ID=$(curl --fail --silent --show-error \
+              -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              "${SUPABASE_URL%/}/auth/v1/admin/users?email=${HEARTBEAT_USER_EMAIL}" \
+              | python3 -c "import json, sys; data=json.load(sys.stdin); users=data.get('users') or []; print((users[0].get('id') if users else '') or '')")
+          fi
 
           if [[ -z "${USER_ID}" ]]; then
             echo "No Supabase user found for ${HEARTBEAT_USER_EMAIL}; skipping keepalive"
