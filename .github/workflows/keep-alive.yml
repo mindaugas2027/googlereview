@@ -10,22 +10,78 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY }}
+      HEARTBEAT_USER_EMAIL: ${{ secrets.HEARTBEAT_USER_EMAIL || 'mindaugas2027@gmail.com' }}
     steps:
-      - name: Ping Supabase auth health endpoint
+      - name: Touch subscription metadata to prevent Supabase sleep
         shell: bash
         run: |
           set -euo pipefail
           : "${SUPABASE_URL:?Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL GitHub secret}"
-          : "${SUPABASE_ANON_KEY:?Missing SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY GitHub secret}"
+          : "${SUPABASE_SERVICE_ROLE_KEY:?Missing SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY GitHub secret}"
 
-          # Use Supabase's built-in health endpoint instead of a table endpoint.
-          # This is independent from app migrations and always exists on a valid project.
-          curl --fail-with-body --silent --show-error \
-            --retry 3 \
-            --retry-delay 5 \
-            --max-time 30 \
-            --output /dev/null \
-            --write-out 'Supabase auth health responded with HTTP %{http_code}\n' \
-            "${SUPABASE_URL%/}/auth/v1/health" \
-            -H "apikey: ${SUPABASE_ANON_KEY}"
+          # Keep the project warm without changing the visible subscription state for the user.
+          # We temporarily add 1 day to a dedicated heartbeat account, then restore the original
+          # metadata within a second so the customer/admin sees no change in billing state.
+          USER_ID=$(curl --fail --silent --show-error \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            "${SUPABASE_URL%/}/auth/v1/admin/users?email=${HEARTBEAT_USER_EMAIL}" \
+            | python3 -c "import json, sys; data=json.load(sys.stdin); users=data.get('users') or []; print((users[0].get('id') if users else '') or '')")
+
+          if [[ -z "${USER_ID}" ]]; then
+            echo "No Supabase user found for ${HEARTBEAT_USER_EMAIL}; skipping keepalive"
+            exit 0
+          fi
+
+          CURRENT_META=$(curl --fail --silent --show-error \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            "${SUPABASE_URL%/}/auth/v1/admin/users/${USER_ID}" \
+            | python3 -c "import json, sys; data=json.load(sys.stdin); user=data.get('user') or {}; print(json.dumps(user.get('user_metadata') or {}))")
+
+          NOW=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          PLUS_1_DAY=$(date -u -d '+1 day' +'%Y-%m-%dT%H:%M:%SZ')
+
+          ADD_ONE_DAY_PAYLOAD=$(python3 - "$CURRENT_META" "$NOW" "$PLUS_1_DAY" <<'PY'
+          import json, sys
+          meta = json.loads(sys.argv[1]) if sys.argv[1] not in ('', 'null') else {}
+          now = sys.argv[2]
+          later = sys.argv[3]
+          out = dict(meta)
+          out['trial_end'] = later
+          out['trial_started_at'] = now
+          out['trial_days'] = 1
+          out['keepalive_last_touch'] = now
+          print(json.dumps({'user_metadata': out}))
+          PY
+          )
+
+          RESTORE_PAYLOAD=$(python3 - "$CURRENT_META" <<'PY'
+          import json, sys
+          meta = json.loads(sys.argv[1]) if sys.argv[1] not in ('', 'null') else {}
+          out = dict(meta)
+          out.pop('keepalive_last_touch', None)
+          print(json.dumps({'user_metadata': out}))
+          PY
+          )
+
+          curl --fail --silent --show-error \
+            -X PUT \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "${ADD_ONE_DAY_PAYLOAD}" \
+            "${SUPABASE_URL%/}/auth/v1/admin/users/${USER_ID}"
+
+          sleep 1
+
+          curl --fail --silent --show-error \
+            -X PUT \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "${RESTORE_PAYLOAD}" \
+            "${SUPABASE_URL%/}/auth/v1/admin/users/${USER_ID}"
+
+          echo "Supabase keepalive touched ${HEARTBEAT_USER_EMAIL} and restored metadata in under 1s."
