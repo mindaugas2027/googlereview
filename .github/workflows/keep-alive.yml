@@ -12,23 +12,21 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
     steps:
-      - name: Ping a public Supabase table
+      - name: Ping Supabase auth health endpoint
         shell: bash
         run: |
           set -euo pipefail
           : "${SUPABASE_URL:?Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL GitHub secret}"
           : "${SUPABASE_ANON_KEY:?Missing SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY GitHub secret}"
 
-          # Query a public table that is intentionally readable by anon users.
-          # This returns HTTP 200 even when the table is empty, instead of 404/400
-          # from hitting the root REST endpoint.
+          # Use Supabase's built-in health endpoint instead of a table endpoint.
+          # This is independent from app migrations and always exists on a valid project.
           curl --fail-with-body --silent --show-error \
             --retry 3 \
             --retry-delay 5 \
             --max-time 30 \
             --output /dev/null \
-            --write-out 'Supabase keep-alive responded with HTTP %{http_code}\n' \
-            "${SUPABASE_URL%/}/rest/v1/store_products?select=id&limit=1" \
+            --write-out 'Supabase auth health responded with HTTP %{http_code}\n' \
+            "${SUPABASE_URL%/}/auth/v1/health" \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            -H "Accept: application/json"
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
